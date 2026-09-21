@@ -51,3 +51,18 @@ app.*.map.json
 *.keystore
 /ios/ExportOptions.plist
 
+# Android local
+**/android/local.properties
+**/android/.gradle/
+**/android/captures/
+
+# iOS
+**/ios/**/Pods/
+**/ios/**/xcuserdata
+**/ios/**/.symlinks/
+**/ios/**/DerivedData/
+**/ios/Flutter/Generated.xcconfig
+**/ios/Flutter/flutter_export_environment.sh
+**/ios/Flutter/ephemeral/
+**/ios/ServiceDefinitions.json
+**/ios/Runner/GeneratedPluginRegistrant.*
