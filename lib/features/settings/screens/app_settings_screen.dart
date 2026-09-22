@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../../core/network/api_exception.dart';
+import '../../../core/theme/app_theme.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../pms/widgets/pms_widgets.dart';
 import '../services/settings_apis.dart';
@@ -152,7 +153,7 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
               : RefreshIndicator(
                   onRefresh: _load,
                   child: ListView(
-                    padding: const EdgeInsets.all(16),
+                    padding: AppTheme.formPadding,
                     children: [
                       if (_error != null) ...[
                         ErrorBanner(message: _error!, onRetry: _load),

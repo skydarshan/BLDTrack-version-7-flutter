@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
 import '../../../core/network/api_exception.dart';
+import '../../../core/theme/app_theme.dart';
 import '../services/pms_services.dart';
 import '../utils/pms_constants.dart';
 import '../widgets/pms_widgets.dart';
@@ -121,7 +122,7 @@ class _TemplateFormScreenState extends State<TemplateFormScreen> {
           : Form(
               key: _formKey,
               child: ListView(
-                padding: const EdgeInsets.all(16),
+                padding: AppTheme.formPadding,
                 children: [
                   TextFormField(
                     controller: _nameCtrl,

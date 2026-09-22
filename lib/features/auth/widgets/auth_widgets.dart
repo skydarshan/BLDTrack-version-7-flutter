@@ -26,7 +26,7 @@ class AuthScaffold extends StatelessWidget {
         child: SafeArea(
           child: Center(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 28),
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 480),
                 child: Column(
@@ -60,6 +60,7 @@ class AuthScaffold extends StatelessWidget {
                                 fontSize: 22,
                               ),
                             ),
+                            const SizedBox(height: 2),
                             Text(
                               'Build smarter',
                               style: AppTheme.bodySmall.copyWith(
@@ -78,7 +79,7 @@ class AuthScaffold extends StatelessWidget {
                         fontSize: 32,
                       ),
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 12),
                     Text(
                       subtitle,
                       style: AppTheme.bodySmall.copyWith(

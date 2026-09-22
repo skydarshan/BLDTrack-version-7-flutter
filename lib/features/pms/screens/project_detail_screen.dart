@@ -519,7 +519,7 @@ class _OverviewTab extends StatelessWidget {
             ? Map<String, dynamic>.from(overview!['task_counts'] as Map)
             : const <String, dynamic>{};
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: AppTheme.formPadding,
       children: [
         Card(
           child: Padding(
@@ -611,7 +611,7 @@ class _MediaTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: AppTheme.formPadding,
       children: [
         MediaPickerBar(files: pending, onChanged: onPendingChanged),
         const SizedBox(height: 8),
@@ -644,7 +644,7 @@ class _HierarchyTab extends StatelessWidget {
       return const EmptyState(message: 'No task hierarchy');
     }
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: AppTheme.formPadding,
       children: [
         for (final n in nodes) _TreeNode(node: n, depth: 0, onOpen: onOpen),
       ],
@@ -735,7 +735,7 @@ class _TimelineTab extends StatelessWidget {
         : 1;
 
     return ListView.builder(
-      padding: const EdgeInsets.all(16),
+      padding: AppTheme.formPadding,
       itemCount: tasks.length,
       itemBuilder: (context, i) {
         final t = tasks[i];
@@ -934,7 +934,7 @@ class _ImportTab extends StatelessWidget {
     final errors = (preview?['errors'] is List) ? preview!['errors'] as List : const [];
     final tree = (preview?['tree'] is List) ? preview!['tree'] as List : const [];
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: AppTheme.formPadding,
       children: [
         const Text(
           'Upload an .xlsx dry-run preview, then commit. Or paste JSON rows.',

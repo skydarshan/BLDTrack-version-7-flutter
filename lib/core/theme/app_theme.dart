@@ -24,6 +24,40 @@ class AppTheme {
   static const Color info = Color(0xFF3B82F6);
   static const Color orange = Color(0xFFEA580C);
 
+  /// Shared layout scale — keep page / form / list spacing consistent.
+  static const double spaceSm = 8;
+  static const double spaceMd = 12;
+  static const double spacePage = 16;
+  static const double spaceLg = 20;
+  /// Extra space after the last list item. Floating nav is cleared in AppShell.
+  static const double spaceNavClearance = 24;
+
+  static const EdgeInsets pagePadding =
+      EdgeInsets.fromLTRB(spacePage, spaceMd, spacePage, spaceNavClearance);
+  static const EdgeInsets listPadding =
+      EdgeInsets.fromLTRB(spacePage, 0, spacePage, spaceNavClearance);
+  static const EdgeInsets formPadding =
+      EdgeInsets.fromLTRB(spacePage, spacePage, spacePage, spaceNavClearance);
+  static const EdgeInsets filterPadding =
+      EdgeInsets.fromLTRB(spacePage, spaceMd, spacePage, spaceSm);
+  static const EdgeInsets searchPadding =
+      EdgeInsets.fromLTRB(spacePage, spaceMd, spacePage, 0);
+  static const EdgeInsets chipRowPadding =
+      EdgeInsets.fromLTRB(spacePage, spaceSm, spacePage, 10);
+
+  static EdgeInsets sheetPadding(BuildContext context) {
+    final mq = MediaQuery.of(context);
+    final bottomSafe = mq.viewInsets.bottom > 0
+        ? mq.viewInsets.bottom
+        : mq.viewPadding.bottom;
+    return EdgeInsets.fromLTRB(
+      spacePage,
+      spacePage,
+      spacePage,
+      bottomSafe + spacePage,
+    );
+  }
+
   static const List<Color> palette = [
     Color(0xFF4F46E5),
     Color(0xFF22C55E),
@@ -242,7 +276,7 @@ class AppTheme {
         shadowColor: const Color(0xFF0F172A).withValues(alpha: 0.08),
       ),
       listTileTheme: ListTileThemeData(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         titleTextStyle: titleSmall,
         subtitleTextStyle: bodySmall,
       ),

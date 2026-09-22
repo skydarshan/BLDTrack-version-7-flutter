@@ -100,7 +100,7 @@ class SettingsHubScreen extends StatelessWidget {
         ],
       ),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
+        padding: AppTheme.pagePadding,
         children: [
           Container(
             decoration: BoxDecoration(
@@ -108,7 +108,7 @@ class SettingsHubScreen extends StatelessWidget {
               gradient: AppTheme.brandGradient,
               boxShadow: AppTheme.softShadow,
             ),
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.all(16),
             child: Row(
               children: [
                 CircleAvatar(
@@ -128,10 +128,12 @@ class SettingsHubScreen extends StatelessWidget {
                         user?.name ?? 'User',
                         style: AppTheme.titleMedium.copyWith(color: Colors.white),
                       ),
+                      const SizedBox(height: 4),
                       Text(
                         user?.displayRole ?? 'User',
                         style: AppTheme.bodySmall.copyWith(color: Colors.white.withValues(alpha: 0.85)),
                       ),
+                      const SizedBox(height: 2),
                       Text(
                         user?.email ?? '',
                         style: AppTheme.bodySmall.copyWith(color: Colors.white.withValues(alpha: 0.7)),

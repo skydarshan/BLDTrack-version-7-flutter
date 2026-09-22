@@ -177,12 +177,7 @@ class _MasterCrudScreenState extends State<MasterCrudScreen> {
         return StatefulBuilder(
           builder: (context, setLocal) {
             return Padding(
-              padding: EdgeInsets.only(
-                left: 16,
-                right: 16,
-                top: 16,
-                bottom: MediaQuery.of(context).viewInsets.bottom + 16,
-              ),
+              padding: AppTheme.sheetPadding(ctx),
               child: SingleChildScrollView(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -301,9 +296,10 @@ class _MasterCrudScreenState extends State<MasterCrudScreen> {
             )
           : null,
       body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+            padding: AppTheme.filterPadding,
             child: TextField(
               controller: _searchCtrl,
               decoration: InputDecoration(
@@ -352,7 +348,7 @@ class _MasterCrudScreenState extends State<MasterCrudScreen> {
                           ],
                         )
                       : ListView.separated(
-                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 88),
+                          padding: AppTheme.listPadding,
                           itemCount: _items.length + 1,
                           separatorBuilder: (_, __) => const SizedBox(height: 8),
                           itemBuilder: (context, i) {

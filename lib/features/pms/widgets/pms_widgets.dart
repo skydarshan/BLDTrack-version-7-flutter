@@ -205,12 +205,13 @@ class ErrorBanner extends StatelessWidget {
   Widget build(BuildContext context) {
     return Card(
       color: const Color(0xFFFEE2E2),
+      margin: const EdgeInsets.fromLTRB(0, 4, 0, 8),
       child: Padding(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
         child: Row(
           children: [
             const Icon(Icons.error_outline, color: AppTheme.danger),
-            const SizedBox(width: 8),
+            const SizedBox(width: 10),
             Expanded(
               child: Text(message, style: const TextStyle(color: AppTheme.danger)),
             ),

@@ -287,12 +287,7 @@ class _RolesScreenState extends State<RolesScreen> {
         return StatefulBuilder(
           builder: (context, setLocal) {
             return Padding(
-              padding: EdgeInsets.only(
-                left: 16,
-                right: 16,
-                top: 16,
-                bottom: MediaQuery.of(context).viewInsets.bottom + 16,
-              ),
+              padding: AppTheme.sheetPadding(ctx),
               child: SizedBox(
                 height: MediaQuery.of(context).size.height * 0.88,
                 child: Column(
@@ -532,9 +527,10 @@ class _RolesScreenState extends State<RolesScreen> {
             )
           : null,
       body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+            padding: AppTheme.filterPadding,
             child: TextField(
               controller: _searchCtrl,
               decoration: InputDecoration(
@@ -583,7 +579,7 @@ class _RolesScreenState extends State<RolesScreen> {
                           ],
                         )
                       : ListView.separated(
-                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 88),
+                          padding: AppTheme.listPadding,
                           itemCount: _items.length + 1,
                           separatorBuilder: (_, __) => const SizedBox(height: 8),
                           itemBuilder: (context, i) {

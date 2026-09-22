@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/api_helpers.dart';
+import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/form_validation_helpers.dart';
 import '../../../core/utils/form_validators.dart';
 import '../../auth/providers/auth_provider.dart';
@@ -244,7 +245,7 @@ class _ProjectFormScreenState extends State<ProjectFormScreen> {
           : Form(
               key: _formKey,
               child: ListView(
-                padding: const EdgeInsets.all(16),
+                padding: AppTheme.formPadding,
                 children: [
                   if (_error != null) ...[
                     ErrorBanner(message: _error!, onRetry: _bootstrap),

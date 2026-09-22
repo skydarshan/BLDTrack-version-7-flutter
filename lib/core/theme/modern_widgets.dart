@@ -35,9 +35,9 @@ class ModernAppBar extends StatelessWidget implements PreferredSizeWidget {
       backgroundColor: Colors.transparent,
       foregroundColor: Colors.white,
       centerTitle: false,
-      title: Text(
+              title: Text(
         title,
-        style: AppTheme.headlineSmall.copyWith(color: Colors.white),
+        style: AppTheme.headlineSmall.copyWith(color: Colors.white, fontSize: 18),
       ),
       flexibleSpace: ClipRRect(
         borderRadius: const BorderRadius.vertical(bottom: Radius.circular(24)),
@@ -211,7 +211,7 @@ class BentoStatCard extends StatelessWidget {
                   : AppTheme.border.withValues(alpha: 0.9),
             ),
           ),
-          padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
+          padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -289,7 +289,7 @@ class SectionHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = color ?? AppTheme.brand;
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.only(bottom: 10, top: 2),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
@@ -365,7 +365,7 @@ class ModernListCard extends StatelessWidget {
               border: Border.all(color: AppTheme.border.withValues(alpha: 0.6)),
             ),
             child: ListTile(
-              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
               leading: icon != null
                   ? AppIconBadge(icon: icon!, color: c, size: 44, iconSize: 22)
                   : null,

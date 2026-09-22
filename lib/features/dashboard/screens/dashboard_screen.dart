@@ -31,7 +31,7 @@ class DashboardScreen extends StatelessWidget {
         ],
       ),
       body: ListView(
-        padding: const EdgeInsets.all(20),
+        padding: AppTheme.pagePadding,
         children: [
           Text(
             'Welcome${user?.name.isNotEmpty == true ? ', ${user!.name}' : ''}',
@@ -47,10 +47,10 @@ class DashboardScreen extends StatelessWidget {
             'Procurement modules will be added after you verify auth.',
             style: TextStyle(color: AppTheme.muted, height: 1.4),
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 16),
           Card(
             child: Padding(
-              padding: const EdgeInsets.all(18),
+              padding: const EdgeInsets.all(16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -77,7 +77,7 @@ class DashboardScreen extends StatelessWidget {
           const SizedBox(height: 16),
           Card(
             child: Padding(
-              padding: const EdgeInsets.all(18),
+              padding: const EdgeInsets.all(16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -106,7 +106,7 @@ class DashboardScreen extends StatelessWidget {
           const SizedBox(height: 16),
           Card(
             child: Padding(
-              padding: const EdgeInsets.all(18),
+              padding: const EdgeInsets.all(16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: const [

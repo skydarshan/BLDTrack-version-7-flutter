@@ -104,7 +104,7 @@ class MultiSelectField extends StatelessWidget {
                 child: Column(
                   children: [
                     Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 16, 8, 8),
+                      padding: const EdgeInsets.fromLTRB(16, 16, 8, 12),
                       child: Row(
                         children: [
                           Expanded(

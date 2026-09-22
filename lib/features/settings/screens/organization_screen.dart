@@ -306,7 +306,7 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
           : RefreshIndicator(
               onRefresh: _load,
               child: ListView(
-                padding: const EdgeInsets.all(16),
+                padding: AppTheme.formPadding,
                 children: [
                   if (_error != null) ...[
                     ErrorBanner(message: _error!, onRetry: _load),
@@ -320,21 +320,21 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
                       enabled: canUpdate,
                       decoration: const InputDecoration(labelText: 'Name *'),
                     ),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 12),
                     TextFormField(
                       controller: _emailCtrl,
                       enabled: canUpdate,
                       keyboardType: TextInputType.emailAddress,
                       decoration: const InputDecoration(labelText: 'Contact email'),
                     ),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 12),
                     TextFormField(
                       controller: _phoneCtrl,
                       enabled: canUpdate,
                       keyboardType: TextInputType.phone,
                       decoration: const InputDecoration(labelText: 'Contact phone'),
                     ),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 12),
                     TextFormField(
                       controller: _addressCtrl,
                       enabled: canUpdate,

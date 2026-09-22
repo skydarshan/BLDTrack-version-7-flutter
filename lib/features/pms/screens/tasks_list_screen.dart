@@ -200,9 +200,10 @@ class _TasksListScreenState extends State<TasksListScreen> {
         child: const Icon(Icons.add),
       ),
       body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+            padding: AppTheme.searchPadding,
             child: TextField(
               controller: _searchCtrl,
               decoration: const InputDecoration(
@@ -214,7 +215,7 @@ class _TasksListScreenState extends State<TasksListScreen> {
           ),
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            padding: AppTheme.chipRowPadding,
             child: Row(
               children: [
                 FilterChip(
@@ -284,7 +285,7 @@ class _TasksListScreenState extends State<TasksListScreen> {
                           ],
                         )
                       : ListView.builder(
-                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
+                          padding: AppTheme.listPadding,
                           itemCount: _items.length + (_hasMore ? 1 : 0),
                           itemBuilder: (context, i) {
                             if (i >= _items.length) {

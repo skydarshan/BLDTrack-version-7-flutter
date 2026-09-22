@@ -94,12 +94,7 @@ class _TaskApprovalsScreenState extends State<TaskApprovalsScreen> {
       isScrollControlled: true,
       builder: (ctx) {
         return Padding(
-          padding: EdgeInsets.only(
-            left: 16,
-            right: 16,
-            top: 16,
-            bottom: MediaQuery.of(ctx).viewInsets.bottom + 16,
-          ),
+          padding: AppTheme.sheetPadding(ctx),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -243,7 +238,7 @@ class _TaskApprovalsScreenState extends State<TaskApprovalsScreen> {
             ],
           ),
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+            padding: AppTheme.chipRowPadding,
             child: Row(
               children: [
                 Icon(Icons.info_outline_rounded, size: 16, color: stepColor),
@@ -289,7 +284,7 @@ class _TaskApprovalsScreenState extends State<TaskApprovalsScreen> {
                       ],
                     )
                   : ListView(
-                      padding: const EdgeInsets.all(16),
+                      padding: AppTheme.formPadding,
                       children: [
                         if (_error != null) ...[
                           ErrorBanner(message: _error!, onRetry: () => _load(reset: true)),

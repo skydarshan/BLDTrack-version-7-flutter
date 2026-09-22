@@ -66,9 +66,10 @@ class _InventoryHomeScreenState extends State<InventoryHomeScreen> {
         actions: [WorkspaceSwitcherButton()],
       ),
       body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+            padding: AppTheme.filterPadding,
             child: SegmentedButton<String>(
               style: ButtonStyle(
                 visualDensity: VisualDensity.compact,
@@ -98,13 +99,13 @@ class _InventoryHomeScreenState extends State<InventoryHomeScreen> {
                   ? ListView(children: const [SizedBox(height: 80), Center(child: CircularProgressIndicator())])
                   : _error != null
                       ? ListView(
-                          padding: const EdgeInsets.all(16),
+                          padding: AppTheme.formPadding,
                           children: [ErrorBanner(message: _error!, onRetry: _load)],
                         )
                       : _items.isEmpty
                           ? ListView(children: const [EmptyState(message: 'No inventory rows')])
                           : ListView.builder(
-                              padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
+                              padding: AppTheme.pagePadding,
                               itemCount: _items.length,
                               itemBuilder: (context, i) {
                                 final row = _items[i];
@@ -190,11 +191,11 @@ class _ImrListScreenState extends State<ImrListScreen> {
         child: _loading
             ? ListView(children: const [SizedBox(height: 80), Center(child: CircularProgressIndicator())])
             : _error != null
-                ? ListView(children: [ErrorBanner(message: _error!, onRetry: _load)])
+                ? ListView(padding: AppTheme.formPadding, children: [ErrorBanner(message: _error!, onRetry: _load)])
                 : _items.isEmpty
                     ? ListView(children: const [EmptyState(message: 'No issue slips')])
                     : ListView.separated(
-                        padding: const EdgeInsets.all(16),
+                        padding: AppTheme.formPadding,
                         itemCount: _items.length,
                         separatorBuilder: (_, __) => const SizedBox(height: 8),
                         itemBuilder: (context, i) {
@@ -302,7 +303,7 @@ class _ImrCreateScreenState extends State<ImrCreateScreen> {
     return Scaffold(
       appBar: AppBar(title: const Text('Issue material')),
       body: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: AppTheme.formPadding,
         children: [
           PickerField(
             label: 'Site',
@@ -467,11 +468,11 @@ class _TransferListScreenState extends State<TransferListScreen> {
         child: _loading
             ? ListView(children: const [SizedBox(height: 80), Center(child: CircularProgressIndicator())])
             : _error != null
-                ? ListView(children: [ErrorBanner(message: _error!, onRetry: _load)])
+                ? ListView(padding: AppTheme.formPadding, children: [ErrorBanner(message: _error!, onRetry: _load)])
                 : _items.isEmpty
                     ? ListView(children: const [EmptyState(message: 'No transfers')])
                     : ListView.separated(
-                        padding: const EdgeInsets.all(16),
+                        padding: AppTheme.formPadding,
                         itemCount: _items.length,
                         separatorBuilder: (_, __) => const SizedBox(height: 8),
                         itemBuilder: (context, i) {
@@ -559,9 +560,12 @@ class _TransferDetailScreenState extends State<TransferDetailScreen> {
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
-              ? ErrorBanner(message: _error!, onRetry: _load)
+              ? Padding(
+                  padding: AppTheme.formPadding,
+                  child: ErrorBanner(message: _error!, onRetry: _load),
+                )
               : ListView(
-                  padding: const EdgeInsets.all(16),
+                  padding: AppTheme.formPadding,
                   children: [
                     StatusChip(status: doc?['status']?.toString()),
                     const SizedBox(height: 8),
@@ -656,7 +660,7 @@ class _TransferCreateScreenState extends State<TransferCreateScreen> {
     return Scaffold(
       appBar: AppBar(title: const Text('New transfer')),
       body: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: AppTheme.formPadding,
         children: [
           PickerField(
             label: 'Origin',
@@ -773,11 +777,11 @@ class _ScrapListScreenState extends State<ScrapListScreen> {
         child: _loading
             ? ListView(children: const [SizedBox(height: 80), Center(child: CircularProgressIndicator())])
             : _error != null
-                ? ListView(children: [ErrorBanner(message: _error!, onRetry: _load)])
+                ? ListView(padding: AppTheme.formPadding, children: [ErrorBanner(message: _error!, onRetry: _load)])
                 : _items.isEmpty
                     ? ListView(children: const [EmptyState(message: 'No scrap records')])
                     : ListView.separated(
-                        padding: const EdgeInsets.all(16),
+                        padding: AppTheme.formPadding,
                         itemCount: _items.length,
                         separatorBuilder: (_, __) => const SizedBox(height: 8),
                         itemBuilder: (context, i) {
@@ -841,9 +845,12 @@ class _ScrapDetailScreenState extends State<ScrapDetailScreen> {
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
-              ? ErrorBanner(message: _error!, onRetry: _load)
+              ? Padding(
+                  padding: AppTheme.formPadding,
+                  child: ErrorBanner(message: _error!, onRetry: _load),
+                )
               : ListView(
-                  padding: const EdgeInsets.all(16),
+                  padding: AppTheme.formPadding,
                   children: [
                     StatusChip(status: doc?['status']?.toString()),
                     const SizedBox(height: 8),
@@ -960,7 +967,7 @@ class _ScrapCreateScreenState extends State<ScrapCreateScreen> {
     return Scaffold(
       appBar: AppBar(title: const Text('New scrap')),
       body: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: AppTheme.formPadding,
         children: [
           PickerField(
             label: 'Site',

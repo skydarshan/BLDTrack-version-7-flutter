@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/api_helpers.dart';
+import '../../../core/theme/app_theme.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../pms/widgets/pms_widgets.dart';
 import '../services/settings_apis.dart';
@@ -99,9 +100,10 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
     return Scaffold(
       appBar: AppBar(title: const Text('Audit Logs')),
       body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+            padding: AppTheme.filterPadding,
             child: TextField(
               controller: _searchCtrl,
               decoration: InputDecoration(
@@ -150,7 +152,7 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
                           ],
                         )
                       : ListView.separated(
-                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                          padding: AppTheme.listPadding,
                           itemCount: _items.length + 1,
                           separatorBuilder: (_, __) => const SizedBox(height: 8),
                           itemBuilder: (context, i) {

@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/api_helpers.dart';
+import '../../../core/theme/app_theme.dart';
 import '../../app/app_services.dart';
 import '../../app/app_shell.dart';
 import '../../pms/widgets/pms_widgets.dart';
@@ -61,11 +62,11 @@ class _RcListScreenState extends State<RcListScreen> {
         child: _loading
             ? ListView(children: const [SizedBox(height: 80), Center(child: CircularProgressIndicator())])
             : _error != null
-                ? ListView(children: [ErrorBanner(message: _error!, onRetry: _load)])
+                ? ListView(padding: AppTheme.formPadding, children: [ErrorBanner(message: _error!, onRetry: _load)])
                 : _items.isEmpty
                     ? ListView(children: const [EmptyState(message: 'No rate comparatives')])
                     : ListView.separated(
-                        padding: const EdgeInsets.all(16),
+                        padding: AppTheme.formPadding,
                         itemCount: _items.length,
                         separatorBuilder: (_, __) => const SizedBox(height: 8),
                         itemBuilder: (context, i) {
@@ -149,9 +150,12 @@ class _RcDetailScreenState extends State<RcDetailScreen> {
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
-              ? ErrorBanner(message: _error!, onRetry: _load)
+              ? Padding(
+                  padding: AppTheme.formPadding,
+                  child: ErrorBanner(message: _error!, onRetry: _load),
+                )
               : ListView(
-                  padding: const EdgeInsets.all(16),
+                  padding: AppTheme.formPadding,
                   children: [
                     StatusChip(status: doc?['status']?.toString()),
                     const SizedBox(height: 8),
@@ -220,9 +224,10 @@ class _RateApprovalsScreenState extends State<RateApprovalsScreen> {
     return Scaffold(
       appBar: AppBar(title: const Text('Rate approvals')),
       body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Padding(
-            padding: const EdgeInsets.all(12),
+            padding: AppTheme.filterPadding,
             child: SegmentedButton<int>(
               segments: const [
                 ButtonSegment(value: 1, label: Text('Step 1')),
@@ -235,14 +240,18 @@ class _RateApprovalsScreenState extends State<RateApprovalsScreen> {
               },
             ),
           ),
-          if (_error != null) ErrorBanner(message: _error!, onRetry: _load),
+          if (_error != null)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: ErrorBanner(message: _error!, onRetry: _load),
+            ),
           Expanded(
             child: _loading
                 ? const Center(child: CircularProgressIndicator())
                 : _items.isEmpty
                     ? const EmptyState(message: 'No pending rate approvals')
                     : ListView.separated(
-                        padding: const EdgeInsets.all(16),
+                        padding: AppTheme.formPadding,
                         itemCount: _items.length,
                         separatorBuilder: (_, __) => const SizedBox(height: 8),
                         itemBuilder: (context, i) {
@@ -314,10 +323,11 @@ class _PoListScreenState extends State<PoListScreen> {
         actions: const [WorkspaceSwitcherButton()],
       ),
       body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.all(12),
+            padding: AppTheme.chipRowPadding,
             child: Row(
               children: [
                 for (final s in ['', 'pending', 'approved', 'rejected', 'revised'])
@@ -341,11 +351,11 @@ class _PoListScreenState extends State<PoListScreen> {
               child: _loading
                   ? ListView(children: const [SizedBox(height: 80), Center(child: CircularProgressIndicator())])
                   : _error != null
-                      ? ListView(children: [ErrorBanner(message: _error!, onRetry: _load)])
+                      ? ListView(padding: AppTheme.formPadding, children: [ErrorBanner(message: _error!, onRetry: _load)])
                       : _items.isEmpty
                           ? ListView(children: const [EmptyState(message: 'No purchase orders')])
                           : ListView.separated(
-                              padding: const EdgeInsets.all(16),
+                              padding: AppTheme.formPadding,
                               itemCount: _items.length,
                               separatorBuilder: (_, __) => const SizedBox(height: 8),
                               itemBuilder: (context, i) {
@@ -436,9 +446,12 @@ class _PoDetailScreenState extends State<PoDetailScreen> {
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
-              ? ErrorBanner(message: _error!, onRetry: _load)
+              ? Padding(
+                  padding: AppTheme.formPadding,
+                  child: ErrorBanner(message: _error!, onRetry: _load),
+                )
               : ListView(
-                  padding: const EdgeInsets.all(16),
+                  padding: AppTheme.formPadding,
                   children: [
                     StatusChip(status: doc?['status']?.toString()),
                     const SizedBox(height: 8),

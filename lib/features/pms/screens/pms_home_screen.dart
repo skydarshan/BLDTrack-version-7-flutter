@@ -187,7 +187,7 @@ class _PmsHomeScreenState extends State<PmsHomeScreen> {
               ),
             ),
             SliverPadding(
-              padding: const EdgeInsets.fromLTRB(16, 14, 16, 100),
+              padding: AppTheme.pagePadding,
               sliver: _loading
                   ? const SliverFillRemaining(
                       hasScrollBody: false,

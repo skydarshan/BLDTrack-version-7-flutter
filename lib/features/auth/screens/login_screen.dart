@@ -88,7 +88,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 12),
             ],
             TextFormField(
               controller: _emailController,

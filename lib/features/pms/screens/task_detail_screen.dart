@@ -85,12 +85,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
         return StatefulBuilder(
           builder: (context, setModal) {
             return Padding(
-              padding: EdgeInsets.only(
-                left: 16,
-                right: 16,
-                top: 16,
-                bottom: MediaQuery.of(ctx).viewInsets.bottom + 16,
-              ),
+              padding: AppTheme.sheetPadding(ctx),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -164,12 +159,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
         return StatefulBuilder(
           builder: (context, setModal) {
             return Padding(
-              padding: EdgeInsets.only(
-                left: 16,
-                right: 16,
-                top: 16,
-                bottom: MediaQuery.of(ctx).viewInsets.bottom + 16,
-              ),
+              padding: AppTheme.sheetPadding(ctx),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -246,12 +236,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
         return StatefulBuilder(
           builder: (context, setModal) {
             return Padding(
-              padding: EdgeInsets.only(
-                left: 16,
-                right: 16,
-                top: 16,
-                bottom: MediaQuery.of(ctx).viewInsets.bottom + 16,
-              ),
+              padding: AppTheme.sheetPadding(ctx),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -439,7 +424,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
               : RefreshIndicator(
                   onRefresh: _load,
                   child: ListView(
-                    padding: const EdgeInsets.all(16),
+                    padding: AppTheme.formPadding,
                     children: [
                       Card(
                         child: Padding(

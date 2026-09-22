@@ -85,7 +85,7 @@ class _ProcurementHomeScreenState extends State<ProcurementHomeScreen> {
                 ],
               )
             : ListView(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
+                padding: AppTheme.pagePadding,
                 children: [
                   if (_error != null) ...[
                     ErrorBanner(message: _error!, onRetry: _load),
@@ -235,9 +235,10 @@ class _RrListScreenState extends State<RrListScreen> {
         child: const Icon(Icons.add),
       ),
       body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+            padding: AppTheme.searchPadding,
             child: TextField(
               decoration: const InputDecoration(
                 hintText: 'Search PR / title…',
@@ -254,7 +255,7 @@ class _RrListScreenState extends State<RrListScreen> {
           ),
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+            padding: AppTheme.chipRowPadding,
             child: Row(
               children: [
                 for (final t in ['all', 'pending', 'revise', 'approved', 'revised', 'rejected'])
@@ -292,7 +293,7 @@ class _RrListScreenState extends State<RrListScreen> {
                   : _items.isEmpty
                       ? ListView(children: const [EmptyState(message: 'No requisitions')])
                       : ListView.separated(
-                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 88),
+                          padding: AppTheme.listPadding,
                           itemCount: _items.length + 1,
                           separatorBuilder: (_, __) => const SizedBox(height: 8),
                           itemBuilder: (context, i) {
@@ -405,9 +406,12 @@ class _RrDetailScreenState extends State<RrDetailScreen> {
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
-              ? ErrorBanner(message: _error!, onRetry: _load)
+              ? Padding(
+                  padding: AppTheme.formPadding,
+                  child: ErrorBanner(message: _error!, onRetry: _load),
+                )
               : ListView(
-                  padding: const EdgeInsets.all(16),
+                  padding: AppTheme.formPadding,
                   children: [
                     Row(
                       children: [
@@ -570,7 +574,7 @@ class _RrCreateScreenState extends State<RrCreateScreen> {
     return Scaffold(
       appBar: AppBar(title: const Text('New requisition')),
       body: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: AppTheme.formPadding,
         children: [
           TextField(
             controller: _title,
@@ -778,9 +782,10 @@ class _RrApprovalsScreenState extends State<RrApprovalsScreen> {
         actions: const [WorkspaceSwitcherButton()],
       ),
       body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Padding(
-            padding: const EdgeInsets.all(12),
+            padding: AppTheme.filterPadding,
             child: SegmentedButton<int>(
               segments: const [
                 ButtonSegment(value: 1, label: Text('Step 1')),
@@ -793,7 +798,11 @@ class _RrApprovalsScreenState extends State<RrApprovalsScreen> {
               },
             ),
           ),
-          if (_error != null) ErrorBanner(message: _error!, onRetry: _load),
+          if (_error != null)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: ErrorBanner(message: _error!, onRetry: _load),
+            ),
           Expanded(
             child: RefreshIndicator(
               onRefresh: _load,
@@ -804,7 +813,7 @@ class _RrApprovalsScreenState extends State<RrApprovalsScreen> {
                   : _items.isEmpty
                       ? ListView(children: const [EmptyState(message: 'No pending approvals')])
                       : ListView.separated(
-                          padding: const EdgeInsets.all(16),
+                          padding: AppTheme.formPadding,
                           itemCount: _items.length,
                           separatorBuilder: (_, __) => const SizedBox(height: 8),
                           itemBuilder: (context, i) {

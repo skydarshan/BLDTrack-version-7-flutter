@@ -42,12 +42,6 @@ class AppShell extends StatelessWidget {
   }
 
   int _index(String path, List<_Tab> tabs) {
-    for (var i = tabs.length - 1; i >= 0; i--) {
-      if (path == tabs[i].path || path.startsWith('${tabs[i].path}/')) {
-        if (tabs[i].path == '/more') continue;
-        return i;
-      }
-    }
     if (path.startsWith('/pms/settings') ||
         path.startsWith('/pms/templates') ||
         path.startsWith('/procurement/rc') ||
@@ -57,6 +51,12 @@ class AppShell extends StatelessWidget {
         path.startsWith('/notifications') ||
         path.startsWith('/billing')) {
       return tabs.length - 1;
+    }
+    for (var i = tabs.length - 1; i >= 0; i--) {
+      if (path == tabs[i].path || path.startsWith('${tabs[i].path}/')) {
+        if (tabs[i].path == '/more' && path != '/more') continue;
+        return i;
+      }
     }
     if (path.startsWith('/pms') && tabs.any((t) => t.path == '/pms')) {
       return 0;
@@ -86,9 +86,15 @@ class AppShell extends StatelessWidget {
       });
     }
 
+    // Nav capsule is 68 + 12 bottom pad; extra 16 keeps FABs above it.
+    final navClearance = 96 + MediaQuery.viewPaddingOf(context).bottom;
+
     return Scaffold(
       extendBody: true,
-      body: child,
+      body: Padding(
+        padding: EdgeInsets.only(bottom: navClearance),
+        child: child,
+      ),
       bottomNavigationBar: ModernBottomNav(
         selectedIndex: index,
         onSelected: (i) {
@@ -220,7 +226,7 @@ class MoreHubScreen extends StatelessWidget {
         actions: const [WorkspaceSwitcherButton()],
       ),
       body: GridView.builder(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
+        padding: AppTheme.pagePadding,
         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: 2,
           mainAxisSpacing: 12,
