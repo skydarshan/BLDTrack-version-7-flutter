@@ -125,12 +125,12 @@ class _SitesScreenState extends State<SitesScreen> {
                   controller: nameCtrl,
                   decoration: const InputDecoration(labelText: 'Site name *'),
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: 8),
                 TextFormField(
                   controller: locationCtrl,
                   decoration: const InputDecoration(labelText: 'Location'),
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: 8),
                 TextFormField(
                   controller: codeCtrl,
                   decoration: const InputDecoration(labelText: 'Code'),
@@ -259,22 +259,13 @@ class _SitesScreenState extends State<SitesScreen> {
             child: RefreshIndicator(
               onRefresh: _load,
               child: _loading
-                  ? ListView(
-                      children: const [
-                        SizedBox(height: 120),
-                        Center(child: CircularProgressIndicator()),
-                      ],
-                    )
+                  ? const CenteredScrollLoader()
                   : _items.isEmpty
-                      ? ListView(
-                          children: const [
-                            EmptyState(message: 'No sites found'),
-                          ],
-                        )
+                      ? EmptyListBody(message: 'No sites found')
                       : ListView.separated(
                           padding: AppTheme.listPadding,
                           itemCount: _items.length + 1,
-                          separatorBuilder: (_, __) => const SizedBox(height: 8),
+                          separatorBuilder: (_, _) => const SizedBox(height: 8),
                           itemBuilder: (context, i) {
                             if (i == _items.length) {
                               return settingsPaginationRow(

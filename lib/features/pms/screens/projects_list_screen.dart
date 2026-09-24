@@ -236,19 +236,9 @@ class _ProjectsListScreenState extends State<ProjectsListScreen> {
             child: RefreshIndicator(
               onRefresh: () => _load(reset: true),
               child: _loading && _items.isEmpty
-                  ? ListView(
-                      children: const [
-                        SizedBox(height: 120),
-                        Center(child: CircularProgressIndicator()),
-                      ],
-                    )
+                  ? const CenteredScrollLoader()
                   : _items.isEmpty
-                      ? ListView(
-                          children: const [
-                            SizedBox(height: 80),
-                            EmptyState(message: 'No projects found'),
-                          ],
-                        )
+                      ? EmptyListBody(message: 'No projects found')
                       : ListView.builder(
                           padding: AppTheme.listPadding,
                           itemCount: _items.length + (_hasMore ? 1 : 0),
@@ -266,7 +256,7 @@ class _ProjectsListScreenState extends State<ProjectsListScreen> {
                             final id = idOf(p);
                             final archived = p['status']?.toString() == 'archived';
                             return Container(
-                              margin: const EdgeInsets.only(bottom: 10),
+                              margin: const EdgeInsets.only(bottom: 8),
                               decoration: BoxDecoration(
                                 borderRadius: BorderRadius.circular(18),
                                 color: Colors.white,

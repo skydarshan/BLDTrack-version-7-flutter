@@ -93,15 +93,15 @@ class _DmrStatusScreenState extends State<DmrStatusScreen> {
             child: RefreshIndicator(
               onRefresh: _load,
               child: _loading
-                  ? ListView(children: const [SizedBox(height: 80), Center(child: CircularProgressIndicator())])
+                  ? const CenteredScrollLoader()
                   : _error != null
                       ? ListView(padding: AppTheme.formPadding, children: [ErrorBanner(message: _error!, onRetry: _load)])
                       : _items.isEmpty
-                          ? ListView(children: const [EmptyState(message: 'No DMR orders')])
+                          ? EmptyListBody(message: 'No DMR orders')
                           : ListView.separated(
                               padding: AppTheme.formPadding,
                               itemCount: _items.length,
-                              separatorBuilder: (_, __) => const SizedBox(height: 8),
+                              separatorBuilder: (_, _) => const SizedBox(height: 8),
                               itemBuilder: (context, i) {
                                 final row = _items[i];
                                 return Card(

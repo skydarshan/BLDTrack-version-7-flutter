@@ -104,7 +104,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 if (_apiError != null) setState(() => _apiError = null);
               },
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 8),
             TextFormField(
               controller: _passwordController,
               obscureText: _obscurePassword,
@@ -123,13 +123,13 @@ class _LoginScreenState extends State<LoginScreen> {
                 if (_apiError != null) setState(() => _apiError = null);
               },
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 12),
             LoadingButton(
               label: 'Sign in',
               loading: auth.isBusy,
               onPressed: _submit,
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 8),
             TextButton(
               onPressed: auth.isBusy ? null : () => context.go('/register'),
               child: const Text('Create an organization'),

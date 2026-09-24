@@ -1,6 +1,7 @@
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 
 import 'app_theme.dart';
 
@@ -183,6 +184,9 @@ class BentoStatCard extends StatelessWidget {
     this.onTap,
     this.hint,
     this.highlight = false,
+    this.expand = false,
+    this.badgeSize = 32,
+    this.glyphSize = 17,
   });
 
   final String label;
@@ -193,8 +197,67 @@ class BentoStatCard extends StatelessWidget {
   final String? hint;
   final bool highlight;
 
+  /// Fills the height given by the parent and keeps the stat content centered.
+  final bool expand;
+  final double badgeSize;
+  final double glyphSize;
+
   @override
   Widget build(BuildContext context) {
+    final content = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          children: [
+            AppIconBadge(icon: icon, color: color, size: badgeSize, iconSize: glyphSize),
+            const Spacer(),
+            if (highlight)
+              Container(
+                width: 8,
+                height: 8,
+                decoration: BoxDecoration(
+                  color: color,
+                  shape: BoxShape.circle,
+                ),
+              ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Text(
+          value,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: AppTheme.displaySmall.copyWith(
+            color: AppTheme.primary,
+            fontSize: 22,
+            height: 1.1,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: AppTheme.labelMedium.copyWith(
+            color: AppTheme.muted,
+            fontSize: 11,
+          ),
+        ),
+        if (hint != null) ...[
+          const SizedBox(height: 2),
+          Text(
+            hint!,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: AppTheme.bodySmall.copyWith(
+              fontSize: 10,
+              color: highlight ? color : AppTheme.muted,
+            ),
+          ),
+        ],
+      ],
+    );
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -211,61 +274,38 @@ class BentoStatCard extends StatelessWidget {
                   : AppTheme.border.withValues(alpha: 0.9),
             ),
           ),
-          padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  AppIconBadge(icon: icon, color: color, size: 34, iconSize: 18),
-                  const Spacer(),
-                  if (highlight)
-                    Container(
-                      width: 8,
-                      height: 8,
-                      decoration: BoxDecoration(
-                        color: color,
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                ],
-              ),
-              const Spacer(),
-              Text(
-                value,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: AppTheme.displaySmall.copyWith(
-                  color: AppTheme.primary,
-                  fontSize: 22,
-                  height: 1.1,
-                ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: AppTheme.labelMedium.copyWith(
-                  color: AppTheme.muted,
-                  fontSize: 11,
-                ),
-              ),
-              if (hint != null) ...[
-                const SizedBox(height: 2),
-                Text(
-                  hint!,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: AppTheme.bodySmall.copyWith(
-                    fontSize: 10,
-                    color: highlight ? color : AppTheme.muted,
-                  ),
-                ),
-              ],
-            ],
-          ),
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
+          child: expand ? _FillCardHeight(child: content) : content,
         ),
+      ),
+    );
+  }
+}
+
+/// Two equal-width stat tiles that hug content height (no empty card bottom).
+class AppStatRow extends StatelessWidget {
+  const AppStatRow({
+    super.key,
+    required this.left,
+    required this.right,
+    this.bottom = AppTheme.gridGap,
+  });
+
+  final Widget left;
+  final Widget right;
+  final double bottom;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(bottom: bottom),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(child: left),
+          const SizedBox(width: AppTheme.gridGap),
+          Expanded(child: right),
+        ],
       ),
     );
   }
@@ -289,7 +329,7 @@ class SectionHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = color ?? AppTheme.brand;
     return Padding(
-      padding: const EdgeInsets.only(bottom: 10, top: 2),
+      padding: const EdgeInsets.only(bottom: 6),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
@@ -319,7 +359,7 @@ class SectionHeader extends StatelessWidget {
               ],
             ),
           ),
-          if (trailing != null) trailing!,
+          ?trailing,
         ],
       ),
     );
@@ -336,6 +376,7 @@ class ModernListCard extends StatelessWidget {
     this.icon,
     this.color,
     this.onTap,
+    this.expand = false,
   });
 
   final String title;
@@ -345,39 +386,89 @@ class ModernListCard extends StatelessWidget {
   final Color? color;
   final VoidCallback? onTap;
 
+  /// When true, the card fills the height given by its parent and keeps the
+  /// row content vertically centered. Other screens leave this false.
+  final bool expand;
+
   @override
   Widget build(BuildContext context) {
     final c = color ?? AppTheme.brand;
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: Material(
-        color: Colors.white,
+    final tile = ListTile(
+      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+      leading: icon != null
+          ? AppIconBadge(icon: icon!, color: c, size: 44, iconSize: 22)
+          : null,
+      title: Text(title, style: AppTheme.titleSmall),
+      subtitle: subtitle != null
+          ? Text(subtitle!, style: AppTheme.bodySmall)
+          : null,
+      trailing: trailing ?? const Icon(Icons.chevron_right_rounded, color: AppTheme.muted),
+    );
+    final card = Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(18),
+      elevation: 0,
+      shadowColor: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
         borderRadius: BorderRadius.circular(18),
-        elevation: 0,
-        shadowColor: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(18),
-          child: Ink(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(18),
-              boxShadow: AppTheme.cardShadow,
-              border: Border.all(color: AppTheme.border.withValues(alpha: 0.6)),
-            ),
-            child: ListTile(
-              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-              leading: icon != null
-                  ? AppIconBadge(icon: icon!, color: c, size: 44, iconSize: 22)
-                  : null,
-              title: Text(title, style: AppTheme.titleSmall),
-              subtitle: subtitle != null
-                  ? Text(subtitle!, style: AppTheme.bodySmall)
-                  : null,
-              trailing: trailing ?? const Icon(Icons.chevron_right_rounded, color: AppTheme.muted),
-            ),
+        child: Ink(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(18),
+            boxShadow: AppTheme.cardShadow,
+            border: Border.all(color: AppTheme.border.withValues(alpha: 0.6)),
           ),
+          child: expand ? _FillCardHeight(child: tile) : tile,
         ),
       ),
     );
+    if (expand) return card;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: card,
+    );
+  }
+}
+
+/// Fills a bounded height and vertically centers [child].
+/// Intrinsic height stays the child's natural height.
+class _FillCardHeight extends SingleChildRenderObjectWidget {
+  const _FillCardHeight({required Widget child}) : super(child: child);
+
+  @override
+  RenderObject createRenderObject(BuildContext context) => _RenderFillCardHeight();
+}
+
+class _RenderFillCardHeight extends RenderShiftedBox {
+  _RenderFillCardHeight() : super(null);
+
+  @override
+  void performLayout() {
+    final child = this.child;
+    if (child == null) {
+      size = constraints.smallest;
+      return;
+    }
+
+    final boundedWidth = constraints.hasBoundedWidth;
+    final boundedHeight = constraints.hasBoundedHeight;
+    child.layout(
+      BoxConstraints(
+        minWidth: boundedWidth ? constraints.maxWidth : 0,
+        maxWidth: constraints.maxWidth,
+        maxHeight: boundedHeight ? constraints.maxHeight : double.infinity,
+      ),
+      parentUsesSize: true,
+    );
+
+    if (boundedWidth && boundedHeight) {
+      size = Size(constraints.maxWidth, constraints.maxHeight);
+    } else {
+      size = constraints.constrain(child.size);
+    }
+
+    final extra = size.height - child.size.height;
+    final dy = extra > 0 ? extra / 2 : 0.0;
+    (child.parentData! as BoxParentData).offset = Offset(0, dy);
   }
 }

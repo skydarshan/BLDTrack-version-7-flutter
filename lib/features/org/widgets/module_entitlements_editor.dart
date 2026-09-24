@@ -121,7 +121,7 @@ class ModuleEntitlementsEditor extends StatelessWidget {
               );
             },
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
         ],
         if (showApprovals && (_procurementOn || _pmOn)) ...[
           const SizedBox(height: 8),
@@ -152,7 +152,7 @@ class ModuleEntitlementsEditor extends StatelessWidget {
                 rrStep2: s2,
               ),
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 8),
             _ApprovalBlock(
               title: 'Rate approval',
               steps: rateSteps,
@@ -167,7 +167,7 @@ class ModuleEntitlementsEditor extends StatelessWidget {
                 rateStep2: s2,
               ),
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 8),
           ],
           if (_pmOn)
             _ApprovalBlock(
@@ -326,7 +326,7 @@ class _ApprovalBlock extends StatelessWidget {
                 : null,
           ),
           if (steps >= 1) ...[
-            const SizedBox(height: 10),
+            const SizedBox(height: 8),
             _ApproverField(
               label: steps == 1 ? 'Approver role *' : 'Step 1 role *',
               value: step1,
@@ -337,7 +337,7 @@ class _ApprovalBlock extends StatelessWidget {
             ),
           ],
           if (steps == 2) ...[
-            const SizedBox(height: 10),
+            const SizedBox(height: 8),
             _ApproverField(
               label: 'Step 2 role *',
               value: step2,

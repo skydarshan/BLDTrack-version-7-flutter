@@ -384,19 +384,9 @@ class _TemplatesListScreenState extends State<TemplatesListScreen> {
             child: RefreshIndicator(
               onRefresh: () => _load(reset: true),
               child: _loading && _items.isEmpty
-                  ? ListView(
-                      children: const [
-                        SizedBox(height: 120),
-                        Center(child: CircularProgressIndicator()),
-                      ],
-                    )
+                  ? const CenteredScrollLoader()
                   : _items.isEmpty
-                      ? ListView(
-                          children: const [
-                            SizedBox(height: 80),
-                            EmptyState(message: 'No templates found'),
-                          ],
-                        )
+                      ? EmptyListBody(message: 'No templates found')
                       : ListView.builder(
                           padding: AppTheme.listPadding,
                           itemCount: _items.length + (_hasMore ? 1 : 0),

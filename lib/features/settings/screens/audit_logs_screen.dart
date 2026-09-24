@@ -139,22 +139,13 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
             child: RefreshIndicator(
               onRefresh: _load,
               child: _loading
-                  ? ListView(
-                      children: const [
-                        SizedBox(height: 120),
-                        Center(child: CircularProgressIndicator()),
-                      ],
-                    )
+                  ? const CenteredScrollLoader()
                   : _items.isEmpty
-                      ? ListView(
-                          children: const [
-                            EmptyState(message: 'No audit logs found'),
-                          ],
-                        )
+                      ? EmptyListBody(message: 'No audit logs found')
                       : ListView.separated(
                           padding: AppTheme.listPadding,
                           itemCount: _items.length + 1,
-                          separatorBuilder: (_, __) => const SizedBox(height: 8),
+                          separatorBuilder: (_, _) => const SizedBox(height: 8),
                           itemBuilder: (context, i) {
                             if (i == _items.length) {
                               return settingsPaginationRow(

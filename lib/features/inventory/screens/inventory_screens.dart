@@ -96,14 +96,14 @@ class _InventoryHomeScreenState extends State<InventoryHomeScreen> {
             child: RefreshIndicator(
               onRefresh: _load,
               child: _loading
-                  ? ListView(children: const [SizedBox(height: 80), Center(child: CircularProgressIndicator())])
+                  ? const CenteredScrollLoader()
                   : _error != null
                       ? ListView(
                           padding: AppTheme.formPadding,
                           children: [ErrorBanner(message: _error!, onRetry: _load)],
                         )
                       : _items.isEmpty
-                          ? ListView(children: const [EmptyState(message: 'No inventory rows')])
+                          ? EmptyListBody(message: 'No inventory rows')
                           : ListView.builder(
                               padding: AppTheme.pagePadding,
                               itemCount: _items.length,
@@ -189,15 +189,15 @@ class _ImrListScreenState extends State<ImrListScreen> {
       body: RefreshIndicator(
         onRefresh: _load,
         child: _loading
-            ? ListView(children: const [SizedBox(height: 80), Center(child: CircularProgressIndicator())])
+            ? const CenteredScrollLoader()
             : _error != null
                 ? ListView(padding: AppTheme.formPadding, children: [ErrorBanner(message: _error!, onRetry: _load)])
                 : _items.isEmpty
-                    ? ListView(children: const [EmptyState(message: 'No issue slips')])
+                    ? EmptyListBody(message: 'No issue slips')
                     : ListView.separated(
                         padding: AppTheme.formPadding,
                         itemCount: _items.length,
-                        separatorBuilder: (_, __) => const SizedBox(height: 8),
+                        separatorBuilder: (_, _) => const SizedBox(height: 8),
                         itemBuilder: (context, i) {
                           final row = _items[i];
                           return Card(
@@ -466,15 +466,15 @@ class _TransferListScreenState extends State<TransferListScreen> {
       body: RefreshIndicator(
         onRefresh: _load,
         child: _loading
-            ? ListView(children: const [SizedBox(height: 80), Center(child: CircularProgressIndicator())])
+            ? const CenteredScrollLoader()
             : _error != null
                 ? ListView(padding: AppTheme.formPadding, children: [ErrorBanner(message: _error!, onRetry: _load)])
                 : _items.isEmpty
-                    ? ListView(children: const [EmptyState(message: 'No transfers')])
+                    ? EmptyListBody(message: 'No transfers')
                     : ListView.separated(
                         padding: AppTheme.formPadding,
                         itemCount: _items.length,
-                        separatorBuilder: (_, __) => const SizedBox(height: 8),
+                        separatorBuilder: (_, _) => const SizedBox(height: 8),
                         itemBuilder: (context, i) {
                           final row = _items[i];
                           return Card(
@@ -775,15 +775,15 @@ class _ScrapListScreenState extends State<ScrapListScreen> {
       body: RefreshIndicator(
         onRefresh: _load,
         child: _loading
-            ? ListView(children: const [SizedBox(height: 80), Center(child: CircularProgressIndicator())])
+            ? const CenteredScrollLoader()
             : _error != null
                 ? ListView(padding: AppTheme.formPadding, children: [ErrorBanner(message: _error!, onRetry: _load)])
                 : _items.isEmpty
-                    ? ListView(children: const [EmptyState(message: 'No scrap records')])
+                    ? EmptyListBody(message: 'No scrap records')
                     : ListView.separated(
                         padding: AppTheme.formPadding,
                         itemCount: _items.length,
-                        separatorBuilder: (_, __) => const SizedBox(height: 8),
+                        separatorBuilder: (_, _) => const SizedBox(height: 8),
                         itemBuilder: (context, i) {
                           final row = _items[i];
                           return Card(

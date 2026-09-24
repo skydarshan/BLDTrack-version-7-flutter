@@ -36,7 +36,7 @@ class AddressFields extends StatelessWidget {
   Widget build(BuildContext context) {
     Widget field(String key, String label, {int maxLines = 1}) {
       return Padding(
-        padding: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.only(bottom: 8),
         child: TextFormField(
           initialValue: values[key] ?? '',
           maxLines: maxLines,
@@ -104,7 +104,7 @@ class MultiSelectField extends StatelessWidget {
                 child: Column(
                   children: [
                     Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 16, 8, 12),
+                      padding: const EdgeInsets.fromLTRB(16, 12, 8, 8),
                       child: Row(
                         children: [
                           Expanded(
@@ -199,7 +199,7 @@ class MultiSelectField extends StatelessWidget {
             ],
           ),
         ],
-        const SizedBox(height: 10),
+        const SizedBox(height: 8),
       ],
     );
   }

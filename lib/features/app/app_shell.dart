@@ -86,8 +86,9 @@ class AppShell extends StatelessWidget {
       });
     }
 
-    // Nav capsule is 68 + 12 bottom pad; extra 16 keeps FABs above it.
-    final navClearance = 96 + MediaQuery.viewPaddingOf(context).bottom;
+    // Must match ModernBottomNav: 68 bar + 12 pad + system gesture inset.
+    final navClearance =
+        80 + MediaQuery.paddingOf(context).bottom;
 
     return Scaffold(
       extendBody: true,
@@ -227,11 +228,11 @@ class MoreHubScreen extends StatelessWidget {
       ),
       body: GridView.builder(
         padding: AppTheme.pagePadding,
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: 2,
-          mainAxisSpacing: 12,
-          crossAxisSpacing: 12,
-          childAspectRatio: 1.35,
+          mainAxisSpacing: 8,
+          crossAxisSpacing: 8,
+          childAspectRatio: 1.7,
         ),
         itemCount: visible.length,
         itemBuilder: (context, i) {
@@ -256,12 +257,12 @@ class MoreHubScreen extends StatelessWidget {
                     ],
                   ),
                 ),
-                padding: const EdgeInsets.all(18),
+                padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     AppIconBadge(icon: t.icon, color: color),
-                    const Spacer(),
+                    const SizedBox(height: 8),
                     Text(
                       t.title,
                       style: AppTheme.titleSmall,

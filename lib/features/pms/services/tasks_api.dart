@@ -1,6 +1,5 @@
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_helpers.dart';
-import 'projects_api.dart';
 
 class TasksApi {
   TasksApi(this._client);

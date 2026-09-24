@@ -150,30 +150,30 @@ class _SiteStaffScreenState extends State<SiteStaffScreen> {
                       controller: nameCtrl,
                       decoration: const InputDecoration(labelText: 'Name *'),
                     ),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 8),
                     TextFormField(
                       controller: codeCtrl,
                       decoration:
                           const InputDecoration(labelText: 'Employee code'),
                     ),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 8),
                     TextFormField(
                       controller: roleCtrl,
                       decoration: const InputDecoration(labelText: 'Role *'),
                     ),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 8),
                     TextFormField(
                       controller: phoneCtrl,
                       keyboardType: TextInputType.phone,
                       decoration: const InputDecoration(labelText: 'Phone *'),
                     ),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 8),
                     TextFormField(
                       controller: emailCtrl,
                       keyboardType: TextInputType.emailAddress,
                       decoration: const InputDecoration(labelText: 'Email'),
                     ),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 8),
                     MultiSelectField(
                       label: 'Sites',
                       options: siteOptions,
@@ -310,22 +310,13 @@ class _SiteStaffScreenState extends State<SiteStaffScreen> {
             child: RefreshIndicator(
               onRefresh: _load,
               child: _loading
-                  ? ListView(
-                      children: const [
-                        SizedBox(height: 120),
-                        Center(child: CircularProgressIndicator()),
-                      ],
-                    )
+                  ? const CenteredScrollLoader()
                   : _items.isEmpty
-                      ? ListView(
-                          children: const [
-                            EmptyState(message: 'No site staff found'),
-                          ],
-                        )
+                      ? EmptyListBody(message: 'No site staff found')
                       : ListView.separated(
                           padding: AppTheme.listPadding,
                           itemCount: _items.length + 1,
-                          separatorBuilder: (_, __) => const SizedBox(height: 8),
+                          separatorBuilder: (_, _) => const SizedBox(height: 8),
                           itemBuilder: (context, i) {
                             if (i == _items.length) {
                               return settingsPaginationRow(

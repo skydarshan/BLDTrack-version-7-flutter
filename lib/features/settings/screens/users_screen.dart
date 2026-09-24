@@ -180,19 +180,19 @@ class _UsersScreenState extends State<UsersScreen> {
                       controller: nameCtrl,
                       decoration: const InputDecoration(labelText: 'Name *'),
                     ),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 8),
                     TextFormField(
                       controller: phoneCtrl,
                       keyboardType: TextInputType.phone,
                       decoration: const InputDecoration(labelText: 'Phone *'),
                     ),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 8),
                     TextFormField(
                       controller: emailCtrl,
                       keyboardType: TextInputType.emailAddress,
                       decoration: const InputDecoration(labelText: 'Email *'),
                     ),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 8),
                     TextFormField(
                       controller: passwordCtrl,
                       obscureText: true,
@@ -202,7 +202,7 @@ class _UsersScreenState extends State<UsersScreen> {
                             : 'Password *',
                       ),
                     ),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 8),
                     PickerField(
                       label: 'Role',
                       required: true,
@@ -221,7 +221,7 @@ class _UsersScreenState extends State<UsersScreen> {
                         });
                       },
                     ),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 8),
                     MultiSelectField(
                       label: 'Sites',
                       options: siteOptions,
@@ -379,22 +379,13 @@ class _UsersScreenState extends State<UsersScreen> {
             child: RefreshIndicator(
               onRefresh: _load,
               child: _loading
-                  ? ListView(
-                      children: const [
-                        SizedBox(height: 120),
-                        Center(child: CircularProgressIndicator()),
-                      ],
-                    )
+                  ? const CenteredScrollLoader()
                   : _items.isEmpty
-                      ? ListView(
-                          children: const [
-                            EmptyState(message: 'No users found'),
-                          ],
-                        )
+                      ? EmptyListBody(message: 'No users found')
                       : ListView.separated(
                           padding: AppTheme.listPadding,
                           itemCount: _items.length + 1,
-                          separatorBuilder: (_, __) => const SizedBox(height: 8),
+                          separatorBuilder: (_, _) => const SizedBox(height: 8),
                           itemBuilder: (context, i) {
                             if (i == _items.length) {
                               return settingsPaginationRow(

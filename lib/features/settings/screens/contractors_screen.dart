@@ -156,15 +156,15 @@ class _ContractorsScreenState extends State<ContractorsScreen> {
                       controller: nameCtrl,
                       decoration: const InputDecoration(labelText: 'Name *'),
                     ),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 8),
                     TextFormField(
                       controller: contactCtrl,
                       decoration:
                           const InputDecoration(labelText: 'Contact person'),
                     ),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 8),
                     DropdownButtonFormField<String>(
-                      value: type,
+                      initialValue: type,
                       decoration: const InputDecoration(labelText: 'Type'),
                       items: [
                         for (final t in _types)
@@ -172,30 +172,30 @@ class _ContractorsScreenState extends State<ContractorsScreen> {
                       ],
                       onChanged: (v) => setLocal(() => type = v ?? type),
                     ),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 8),
                     TextFormField(
                       controller: natureCtrl,
                       decoration:
                           const InputDecoration(labelText: 'Nature of work'),
                     ),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 8),
                     TextFormField(
                       controller: phoneCtrl,
                       keyboardType: TextInputType.phone,
                       decoration: const InputDecoration(labelText: 'Phone *'),
                     ),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 8),
                     TextFormField(
                       controller: emailCtrl,
                       keyboardType: TextInputType.emailAddress,
                       decoration: const InputDecoration(labelText: 'Email'),
                     ),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 8),
                     TextFormField(
                       controller: locationCtrl,
                       decoration: const InputDecoration(labelText: 'Location'),
                     ),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 8),
                     MultiSelectField(
                       label: 'Sites',
                       options: siteOptions,
@@ -331,22 +331,13 @@ class _ContractorsScreenState extends State<ContractorsScreen> {
             child: RefreshIndicator(
               onRefresh: _load,
               child: _loading
-                  ? ListView(
-                      children: const [
-                        SizedBox(height: 120),
-                        Center(child: CircularProgressIndicator()),
-                      ],
-                    )
+                  ? const CenteredScrollLoader()
                   : _items.isEmpty
-                      ? ListView(
-                          children: const [
-                            EmptyState(message: 'No contractors found'),
-                          ],
-                        )
+                      ? EmptyListBody(message: 'No contractors found')
                       : ListView.separated(
                           padding: AppTheme.listPadding,
                           itemCount: _items.length + 1,
-                          separatorBuilder: (_, __) => const SizedBox(height: 8),
+                          separatorBuilder: (_, _) => const SizedBox(height: 8),
                           itemBuilder: (context, i) {
                             if (i == _items.length) {
                               return settingsPaginationRow(

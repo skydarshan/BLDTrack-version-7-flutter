@@ -29,21 +29,24 @@ class AppTheme {
   static const double spaceMd = 12;
   static const double spacePage = 16;
   static const double spaceLg = 20;
-  /// Extra space after the last list item. Floating nav is cleared in AppShell.
-  static const double spaceNavClearance = 24;
+  /// Gap between a stats grid and the next section header.
+  static const double sectionGap = 8;
+  static const double gridGap = 8;
+  /// Space after the last list item. AppShell already clears the floating nav.
+  static const double spaceNavClearance = 8;
 
   static const EdgeInsets pagePadding =
-      EdgeInsets.fromLTRB(spacePage, spaceMd, spacePage, spaceNavClearance);
+      EdgeInsets.fromLTRB(spacePage, spaceSm, spacePage, spaceNavClearance);
   static const EdgeInsets listPadding =
       EdgeInsets.fromLTRB(spacePage, 0, spacePage, spaceNavClearance);
   static const EdgeInsets formPadding =
       EdgeInsets.fromLTRB(spacePage, spacePage, spacePage, spaceNavClearance);
   static const EdgeInsets filterPadding =
-      EdgeInsets.fromLTRB(spacePage, spaceMd, spacePage, spaceSm);
+      EdgeInsets.fromLTRB(spacePage, spaceSm, spacePage, spaceSm);
   static const EdgeInsets searchPadding =
-      EdgeInsets.fromLTRB(spacePage, spaceMd, spacePage, 0);
+      EdgeInsets.fromLTRB(spacePage, spaceSm, spacePage, 0);
   static const EdgeInsets chipRowPadding =
-      EdgeInsets.fromLTRB(spacePage, spaceSm, spacePage, 10);
+      EdgeInsets.fromLTRB(spacePage, spaceSm, spacePage, spaceSm);
 
   static EdgeInsets sheetPadding(BuildContext context) {
     final mq = MediaQuery.of(context);
@@ -244,7 +247,7 @@ class AppTheme {
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: Colors.white,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         labelStyle: bodySmall,
         hintStyle: bodySmall.copyWith(color: muted.withValues(alpha: 0.7)),
         border: OutlineInputBorder(
@@ -276,7 +279,7 @@ class AppTheme {
         shadowColor: const Color(0xFF0F172A).withValues(alpha: 0.08),
       ),
       listTileTheme: ListTileThemeData(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
         titleTextStyle: titleSmall,
         subtitleTextStyle: bodySmall,
       ),
@@ -323,7 +326,7 @@ class AppSegmentTabs extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      margin: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+      margin: const EdgeInsets.fromLTRB(16, 8, 16, 4),
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
         color: Colors.white,

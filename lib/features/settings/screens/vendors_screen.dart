@@ -145,13 +145,13 @@ class _VendorsScreenState extends State<VendorsScreen> {
                   decoration:
                       const InputDecoration(labelText: 'Vendor name *'),
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: 8),
                 TextFormField(
                   controller: contactCtrl,
                   decoration:
                       const InputDecoration(labelText: 'Contact person'),
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: 8),
                 TextFormField(
                   controller: phoneCtrl,
                   keyboardType: TextInputType.phone,
@@ -159,7 +159,7 @@ class _VendorsScreenState extends State<VendorsScreen> {
                     labelText: 'Phone numbers (comma-separated)',
                   ),
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: 8),
                 TextFormField(
                   controller: emailCtrl,
                   keyboardType: TextInputType.emailAddress,
@@ -167,12 +167,12 @@ class _VendorsScreenState extends State<VendorsScreen> {
                     labelText: 'Emails (comma-separated)',
                   ),
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: 8),
                 TextFormField(
                   controller: gstCtrl,
                   decoration: const InputDecoration(labelText: 'GST number'),
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: 8),
                 TextFormField(
                   controller: panCtrl,
                   decoration: const InputDecoration(labelText: 'PAN number'),
@@ -307,22 +307,13 @@ class _VendorsScreenState extends State<VendorsScreen> {
             child: RefreshIndicator(
               onRefresh: _load,
               child: _loading
-                  ? ListView(
-                      children: const [
-                        SizedBox(height: 120),
-                        Center(child: CircularProgressIndicator()),
-                      ],
-                    )
+                  ? const CenteredScrollLoader()
                   : _items.isEmpty
-                      ? ListView(
-                          children: const [
-                            EmptyState(message: 'No vendors found'),
-                          ],
-                        )
+                      ? EmptyListBody(message: 'No vendors found')
                       : ListView.separated(
                           padding: AppTheme.listPadding,
                           itemCount: _items.length + 1,
-                          separatorBuilder: (_, __) => const SizedBox(height: 8),
+                          separatorBuilder: (_, _) => const SizedBox(height: 8),
                           itemBuilder: (context, i) {
                             if (i == _items.length) {
                               return settingsPaginationRow(

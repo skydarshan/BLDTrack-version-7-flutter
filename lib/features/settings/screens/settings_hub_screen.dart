@@ -31,7 +31,7 @@ class SettingsHubScreen extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(4, 16, 4, 8),
+          padding: const EdgeInsets.fromLTRB(4, 12, 4, 8),
           child: Text(
             title,
             style: const TextStyle(
@@ -175,7 +175,7 @@ class SettingsHubScreen extends StatelessWidget {
               ],
             ),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 8),
           OutlinedButton.icon(
             onPressed: () async {
               await auth.logout();

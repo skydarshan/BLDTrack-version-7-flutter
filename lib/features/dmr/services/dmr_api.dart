@@ -179,7 +179,7 @@ class DmrApi {
       '/dmr-entries/invoice',
       payload: payload,
       namedFiles: {
-        if (document != null) 'invoice_or_challan_doc': document,
+        'invoice_or_challan_doc': ?document,
       },
     );
     return unwrapDataMap(res.data);
@@ -204,7 +204,7 @@ class DmrApi {
       '/imperest-dmr-entries',
       payload: payload,
       namedFiles: {
-        if (document != null) 'invoice_or_challan_doc': document,
+        'invoice_or_challan_doc': ?document,
       },
     );
     return unwrapDataMap(res.data);
@@ -295,7 +295,7 @@ class DmrApi {
       '/credit-notes',
       payload: payload,
       namedFiles: {
-        if (document != null) 'invoice_or_challan_doc': document,
+        'invoice_or_challan_doc': ?document,
       },
     );
     return unwrapDataMap(res.data);

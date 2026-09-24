@@ -261,12 +261,12 @@ class _ItemsScreenState extends State<ItemsScreen> {
                       decoration:
                           const InputDecoration(labelText: 'Item name *'),
                     ),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 8),
                     TextFormField(
                       controller: hsnCtrl,
                       decoration: const InputDecoration(labelText: 'HSN code'),
                     ),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 8),
                     PickerField(
                       label: 'Category',
                       valueLabel: categoryLabel,
@@ -280,7 +280,7 @@ class _ItemsScreenState extends State<ItemsScreen> {
                         if (picked != null) await onCategoryPicked(picked);
                       },
                     ),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 8),
                     PickerField(
                       label: 'Sub category',
                       valueLabel: subCategoryLabel,
@@ -299,7 +299,7 @@ class _ItemsScreenState extends State<ItemsScreen> {
                         });
                       },
                     ),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 8),
                     PickerField(
                       label: 'UOM',
                       valueLabel: uomLabel,
@@ -317,7 +317,7 @@ class _ItemsScreenState extends State<ItemsScreen> {
                         });
                       },
                     ),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 8),
                     PickerField(
                       label: 'GST',
                       valueLabel: gstLabel,
@@ -335,7 +335,7 @@ class _ItemsScreenState extends State<ItemsScreen> {
                         });
                       },
                     ),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 8),
                     MultiSelectField(
                       label: 'Brands',
                       options: brandOptions,
@@ -477,22 +477,13 @@ class _ItemsScreenState extends State<ItemsScreen> {
             child: RefreshIndicator(
               onRefresh: _load,
               child: _loading
-                  ? ListView(
-                      children: const [
-                        SizedBox(height: 120),
-                        Center(child: CircularProgressIndicator()),
-                      ],
-                    )
+                  ? const CenteredScrollLoader()
                   : _items.isEmpty
-                      ? ListView(
-                          children: const [
-                            EmptyState(message: 'No items found'),
-                          ],
-                        )
+                      ? EmptyListBody(message: 'No items found')
                       : ListView.separated(
                           padding: AppTheme.listPadding,
                           itemCount: _items.length + 1,
-                          separatorBuilder: (_, __) => const SizedBox(height: 8),
+                          separatorBuilder: (_, _) => const SizedBox(height: 8),
                           itemBuilder: (context, i) {
                             if (i == _items.length) {
                               return settingsPaginationRow(

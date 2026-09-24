@@ -145,7 +145,7 @@ class _TaskApprovalsScreenState extends State<TaskApprovalsScreen> {
   }) {
     final id = idOf(task);
     return Container(
-      margin: const EdgeInsets.only(bottom: 10),
+      margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
@@ -277,12 +277,7 @@ class _TaskApprovalsScreenState extends State<TaskApprovalsScreen> {
             child: RefreshIndicator(
               onRefresh: () => _load(reset: true),
               child: _loading && items.isEmpty
-                  ? ListView(
-                      children: const [
-                        SizedBox(height: 120),
-                        Center(child: CircularProgressIndicator()),
-                      ],
-                    )
+                  ? const CenteredScrollLoader()
                   : ListView(
                       padding: AppTheme.formPadding,
                       children: [

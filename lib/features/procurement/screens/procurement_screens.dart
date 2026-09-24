@@ -1,4 +1,7 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
@@ -78,86 +81,340 @@ class _ProcurementHomeScreenState extends State<ProcurementHomeScreen> {
       body: RefreshIndicator(
         onRefresh: _load,
         child: _loading
-            ? ListView(
-                children: const [
-                  SizedBox(height: 120),
-                  Center(child: CircularProgressIndicator()),
-                ],
-              )
-            : ListView(
-                padding: AppTheme.pagePadding,
-                children: [
-                  if (_error != null) ...[
-                    ErrorBanner(message: _error!, onRetry: _load),
-                    const SizedBox(height: 12),
-                  ],
-                  GridView.count(
-                    crossAxisCount: 2,
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    mainAxisSpacing: 10,
-                    crossAxisSpacing: 10,
-                    childAspectRatio: 1.45,
-                    children: [
-                      BentoStatCard(
-                        label: 'Inventory value',
-                        value: '${remaining['valueFormatted'] ?? remaining['value'] ?? 0}',
-                        icon: Icons.inventory_2_rounded,
-                        color: AppTheme.accent,
+            ? const CenteredScrollLoader()
+            : LayoutBuilder(
+                builder: (context, constraints) {
+                  final padding = AppTheme.pagePadding;
+                  final innerHeight = constraints.maxHeight.isFinite
+                      ? math.max(0.0, constraints.maxHeight - padding.vertical)
+                      : 0.0;
+                  final screenH = MediaQuery.sizeOf(context).height;
+                  // Stats take most of the leftover height. Actions stay near
+                  // their natural row size so they do not turn into tall banners.
+                  final statGrowthCap = (screenH * 0.05).clamp(32.0, 56.0);
+                  final actionGrowthCap = (screenH * 0.024).clamp(12.0, 22.0);
+                  return SingleChildScrollView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: padding,
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(minHeight: innerHeight),
+                      child: _ProcurementHomeBalance(
+                        statGap: AppTheme.gridGap,
+                        actionGap: AppTheme.gridGap,
+                        sectionGap: AppTheme.sectionGap,
+                        statGrowthCap: statGrowthCap,
+                        actionGrowthCap: actionGrowthCap,
+                        banner: _error != null
+                            ? ErrorBanner(message: _error!, onRetry: _load)
+                            : const SizedBox.shrink(),
+                        stats: [
+                          BentoStatCard(
+                            expand: true,
+                            badgeSize: 44,
+                            glyphSize: 24,
+                            label: 'Inventory value',
+                            value: '${remaining['valueFormatted'] ?? remaining['value'] ?? 0}',
+                            icon: Icons.inventory_2_rounded,
+                            color: AppTheme.accent,
+                          ),
+                          BentoStatCard(
+                            expand: true,
+                            badgeSize: 44,
+                            glyphSize: 24,
+                            label: 'Active sites',
+                            value: '${sites['count'] ?? 0}',
+                            icon: Icons.place_rounded,
+                            color: AppTheme.info,
+                          ),
+                          BentoStatCard(
+                            expand: true,
+                            badgeSize: 44,
+                            glyphSize: 24,
+                            label: 'Yet to receive',
+                            value: '${pending['valueFormatted'] ?? pending['value'] ?? 0}',
+                            hint: pendingLines != null ? '$pendingLines pending lines' : null,
+                            icon: Icons.local_shipping_rounded,
+                            color: AppTheme.orange,
+                            onTap: () => context.go('/dmr/status'),
+                          ),
+                          BentoStatCard(
+                            expand: true,
+                            badgeSize: 44,
+                            glyphSize: 24,
+                            label: 'Purchase requests',
+                            value: '${prs['count'] ?? 0}',
+                            hint: '$pendingPrs pending',
+                            icon: Icons.description_rounded,
+                            color: AppTheme.brand,
+                            highlight: (pendingPrs is num ? pendingPrs > 0 : '$pendingPrs' != '0'),
+                            onTap: () => context.go('/procurement/rr'),
+                          ),
+                        ],
+                        header: const SectionHeader(title: 'Quick actions', color: AppTheme.brand),
+                        actions: [
+                          ModernListCard(
+                            expand: true,
+                            title: 'New requisition',
+                            subtitle: 'Raise an RR',
+                            icon: Icons.add_box_rounded,
+                            color: AppTheme.brand,
+                            onTap: () => context.push('/procurement/rr/new'),
+                          ),
+                          ModernListCard(
+                            expand: true,
+                            title: 'Approvals',
+                            subtitle: 'Review pending PRs',
+                            icon: Icons.verified_rounded,
+                            color: AppTheme.success,
+                            onTap: () => context.go('/procurement/approvals'),
+                          ),
+                          ModernListCard(
+                            expand: true,
+                            title: 'Purchase orders',
+                            subtitle: 'Open orders',
+                            icon: Icons.shopping_bag_rounded,
+                            color: AppTheme.info,
+                            onTap: () => context.go('/procurement/po'),
+                          ),
+                        ],
                       ),
-                      BentoStatCard(
-                        label: 'Active sites',
-                        value: '${sites['count'] ?? 0}',
-                        icon: Icons.place_rounded,
-                        color: AppTheme.info,
-                      ),
-                      BentoStatCard(
-                        label: 'Yet to receive',
-                        value: '${pending['valueFormatted'] ?? pending['value'] ?? 0}',
-                        hint: pendingLines != null ? '$pendingLines pending lines' : null,
-                        icon: Icons.local_shipping_rounded,
-                        color: AppTheme.orange,
-                        onTap: () => context.go('/dmr/status'),
-                      ),
-                      BentoStatCard(
-                        label: 'Purchase requests',
-                        value: '${prs['count'] ?? 0}',
-                        hint: '$pendingPrs pending',
-                        icon: Icons.description_rounded,
-                        color: AppTheme.brand,
-                        highlight: (pendingPrs is num ? pendingPrs > 0 : '$pendingPrs' != '0'),
-                        onTap: () => context.go('/procurement/rr'),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 18),
-                  SectionHeader(title: 'Quick actions', color: AppTheme.brand),
-                  const SizedBox(height: 4),
-                  ModernListCard(
-                    title: 'New requisition',
-                    subtitle: 'Raise an RR',
-                    icon: Icons.add_box_rounded,
-                    color: AppTheme.brand,
-                    onTap: () => context.push('/procurement/rr/new'),
-                  ),
-                  ModernListCard(
-                    title: 'Approvals',
-                    subtitle: 'Review pending PRs',
-                    icon: Icons.verified_rounded,
-                    color: AppTheme.success,
-                    onTap: () => context.go('/procurement/approvals'),
-                  ),
-                  ModernListCard(
-                    title: 'Purchase orders',
-                    subtitle: 'Open orders',
-                    icon: Icons.shopping_bag_rounded,
-                    color: AppTheme.info,
-                    onTap: () => context.go('/procurement/po'),
-                  ),
-                ],
+                    ),
+                  );
+                },
               ),
       ),
     );
+  }
+}
+
+/// Equal-height stat grid, then comfortable equal-height quick actions.
+/// Leftover viewport goes to the stat cards first, then a small amount to
+/// the action cards. Nothing is inserted as an empty spacer.
+class _ProcurementHomeBalance extends MultiChildRenderObjectWidget {
+  _ProcurementHomeBalance({
+    required Widget banner,
+    required List<Widget> stats,
+    required Widget header,
+    required List<Widget> actions,
+    required this.statGap,
+    required this.actionGap,
+    required this.sectionGap,
+    required this.statGrowthCap,
+    required this.actionGrowthCap,
+  })  : assert(stats.length == 4),
+        super(children: [banner, ...stats, header, ...actions]);
+
+  final double statGap;
+  final double actionGap;
+  final double sectionGap;
+  final double statGrowthCap;
+  final double actionGrowthCap;
+
+  @override
+  RenderObject createRenderObject(BuildContext context) {
+    return _RenderProcurementHomeBalance(
+      statGap: statGap,
+      actionGap: actionGap,
+      sectionGap: sectionGap,
+      statGrowthCap: statGrowthCap,
+      actionGrowthCap: actionGrowthCap,
+    );
+  }
+
+  @override
+  void updateRenderObject(
+    BuildContext context,
+    _RenderProcurementHomeBalance renderObject,
+  ) {
+    renderObject
+      ..statGap = statGap
+      ..actionGap = actionGap
+      ..sectionGap = sectionGap
+      ..statGrowthCap = statGrowthCap
+      ..actionGrowthCap = actionGrowthCap;
+  }
+}
+
+class _HomeParentData extends ContainerBoxParentData<RenderBox> {}
+
+class _RenderProcurementHomeBalance extends RenderBox
+    with
+        ContainerRenderObjectMixin<RenderBox, _HomeParentData>,
+        RenderBoxContainerDefaultsMixin<RenderBox, _HomeParentData> {
+  _RenderProcurementHomeBalance({
+    required double statGap,
+    required double actionGap,
+    required double sectionGap,
+    required double statGrowthCap,
+    required double actionGrowthCap,
+  })  : _statGap = statGap,
+        _actionGap = actionGap,
+        _sectionGap = sectionGap,
+        _statGrowthCap = statGrowthCap,
+        _actionGrowthCap = actionGrowthCap;
+
+  double _statGap;
+  double _actionGap;
+  double _sectionGap;
+  double _statGrowthCap;
+  double _actionGrowthCap;
+
+  double get statGap => _statGap;
+  set statGap(double value) {
+    if (_statGap == value) return;
+    _statGap = value;
+    markNeedsLayout();
+  }
+
+  double get actionGap => _actionGap;
+  set actionGap(double value) {
+    if (_actionGap == value) return;
+    _actionGap = value;
+    markNeedsLayout();
+  }
+
+  double get sectionGap => _sectionGap;
+  set sectionGap(double value) {
+    if (_sectionGap == value) return;
+    _sectionGap = value;
+    markNeedsLayout();
+  }
+
+  double get statGrowthCap => _statGrowthCap;
+  set statGrowthCap(double value) {
+    if (_statGrowthCap == value) return;
+    _statGrowthCap = value;
+    markNeedsLayout();
+  }
+
+  double get actionGrowthCap => _actionGrowthCap;
+  set actionGrowthCap(double value) {
+    if (_actionGrowthCap == value) return;
+    _actionGrowthCap = value;
+    markNeedsLayout();
+  }
+
+  @override
+  void setupParentData(RenderBox child) {
+    if (child.parentData is! _HomeParentData) {
+      child.parentData = _HomeParentData();
+    }
+  }
+
+  void _place(RenderBox box, Offset offset) {
+    (box.parentData! as _HomeParentData).offset = offset;
+  }
+
+  @override
+  void performLayout() {
+    final width = constraints.hasBoundedWidth ? constraints.maxWidth : 0.0;
+    final target = constraints.minHeight.isFinite ? constraints.minHeight : 0.0;
+    final banner = firstChild;
+    if (banner == null) {
+      size = constraints.constrain(Size(width, target));
+      return;
+    }
+
+    final stats = <RenderBox>[];
+    var cursor = childAfter(banner);
+    for (var i = 0; i < 4 && cursor != null; i++) {
+      stats.add(cursor);
+      cursor = childAfter(cursor);
+    }
+    final header = cursor;
+    final actions = <RenderBox>[];
+    cursor = header == null ? null : childAfter(header);
+    while (cursor != null) {
+      actions.add(cursor);
+      cursor = childAfter(cursor);
+    }
+
+    banner.layout(BoxConstraints(maxWidth: width), parentUsesSize: true);
+
+    final statWidth = math.max(0.0, (width - statGap) / 2);
+    var naturalStat = 0.0;
+    for (final card in stats) {
+      card.layout(BoxConstraints(maxWidth: statWidth), parentUsesSize: true);
+      naturalStat = math.max(naturalStat, card.size.height);
+    }
+
+    if (header != null) {
+      header.layout(BoxConstraints(maxWidth: width), parentUsesSize: true);
+    }
+
+    var naturalAction = 0.0;
+    for (final card in actions) {
+      card.layout(BoxConstraints(maxWidth: width), parentUsesSize: true);
+      naturalAction = math.max(naturalAction, card.size.height);
+    }
+
+    final headerHeight = header?.size.height ?? 0.0;
+    final actionGaps = actions.isEmpty ? 0.0 : actionGap * (actions.length - 1);
+    final fixed = banner.size.height +
+        statGap +
+        sectionGap +
+        headerHeight +
+        actionGaps;
+    final base = fixed + (2 * naturalStat) + (actions.length * naturalAction);
+    final extra = math.max(0.0, target - base);
+
+    var statAdd = math.min(statGrowthCap, stats.isEmpty ? 0.0 : extra / 2);
+    var used = statAdd * 2;
+    var actionAdd = 0.0;
+    if (actions.isNotEmpty) {
+      actionAdd = math.min(actionGrowthCap, (extra - used) / actions.length);
+      used += actionAdd * actions.length;
+    }
+    final statRoom = (statGrowthCap - statAdd) * 2;
+    if (statRoom > 0 && extra > used) {
+      statAdd += math.min(statGrowthCap - statAdd, (extra - used) / 2);
+    }
+
+    final statHeight = naturalStat + statAdd;
+    final actionHeight = naturalAction + actionAdd;
+    final statConstraints = BoxConstraints.tightFor(width: statWidth, height: statHeight);
+    for (final card in stats) {
+      card.layout(statConstraints, parentUsesSize: true);
+    }
+    final actionConstraints = BoxConstraints.tightFor(width: width, height: actionHeight);
+    for (final card in actions) {
+      card.layout(actionConstraints, parentUsesSize: true);
+    }
+
+    var y = 0.0;
+    _place(banner, Offset.zero);
+    y += banner.size.height;
+
+    final xRight = statWidth + statGap;
+    if (stats.length == 4) {
+      _place(stats[0], Offset(0, y));
+      _place(stats[1], Offset(xRight, y));
+      y += statHeight + statGap;
+      _place(stats[2], Offset(0, y));
+      _place(stats[3], Offset(xRight, y));
+      y += statHeight + sectionGap;
+    }
+    if (header != null) {
+      _place(header, Offset(0, y));
+      y += headerHeight;
+    }
+    for (var i = 0; i < actions.length; i++) {
+      _place(actions[i], Offset(0, y));
+      y += actionHeight;
+      if (i != actions.length - 1) y += actionGap;
+    }
+
+    size = constraints.constrain(Size(width, math.max(target, y)));
+  }
+
+  @override
+  void paint(PaintingContext context, Offset offset) {
+    defaultPaint(context, offset);
+  }
+
+  @override
+  bool hitTestChildren(BoxHitTestResult result, {required Offset position}) {
+    return defaultHitTestChildren(result, position: position);
   }
 }
 
@@ -287,15 +544,13 @@ class _RrListScreenState extends State<RrListScreen> {
             child: RefreshIndicator(
               onRefresh: _load,
               child: _loading
-                  ? ListView(
-                      children: const [SizedBox(height: 80), Center(child: CircularProgressIndicator())],
-                    )
+                  ? const CenteredScrollLoader()
                   : _items.isEmpty
-                      ? ListView(children: const [EmptyState(message: 'No requisitions')])
+                      ? EmptyListBody(message: 'No requisitions')
                       : ListView.separated(
                           padding: AppTheme.listPadding,
                           itemCount: _items.length + 1,
-                          separatorBuilder: (_, __) => const SizedBox(height: 8),
+                          separatorBuilder: (_, _) => const SizedBox(height: 8),
                           itemBuilder: (context, i) {
                             if (i == _items.length) {
                               final pages = paginationTotalPages(_pagination);
@@ -807,15 +1062,13 @@ class _RrApprovalsScreenState extends State<RrApprovalsScreen> {
             child: RefreshIndicator(
               onRefresh: _load,
               child: _loading
-                  ? ListView(
-                      children: const [SizedBox(height: 80), Center(child: CircularProgressIndicator())],
-                    )
+                  ? const CenteredScrollLoader()
                   : _items.isEmpty
-                      ? ListView(children: const [EmptyState(message: 'No pending approvals')])
+                      ? EmptyListBody(message: 'No pending approvals')
                       : ListView.separated(
                           padding: AppTheme.formPadding,
                           itemCount: _items.length,
-                          separatorBuilder: (_, __) => const SizedBox(height: 8),
+                          separatorBuilder: (_, _) => const SizedBox(height: 8),
                           itemBuilder: (context, i) {
                             final row = _items[i];
                             return Card(

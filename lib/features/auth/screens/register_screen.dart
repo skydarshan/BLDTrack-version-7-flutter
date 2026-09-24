@@ -247,7 +247,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             _StepIndicator(step: _step),
-            const SizedBox(height: 20),
+            const SizedBox(height: 12),
             if (_stepError != null) ...[
               ValidationSummaryBanner(messages: [_stepError!]),
             ],
@@ -362,7 +362,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 },
               ),
             ],
-            const SizedBox(height: 20),
+            const SizedBox(height: 12),
             Row(
               children: [
                 if (_step > 1)

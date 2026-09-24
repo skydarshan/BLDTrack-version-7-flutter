@@ -175,7 +175,7 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
                       ),
                       const SizedBox(height: 12),
                       DropdownButtonFormField<String>(
-                        value: ['gmail', 'outlook', 'custom']
+                        initialValue: ['gmail', 'outlook', 'custom']
                                 .contains(_providerCtrl.text)
                             ? _providerCtrl.text
                             : 'gmail',
@@ -203,7 +203,7 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
                                 });
                               },
                       ),
-                      const SizedBox(height: 10),
+                      const SizedBox(height: 8),
                       TextFormField(
                         controller: _userCtrl,
                         enabled: !_busy,
@@ -211,7 +211,7 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
                         decoration:
                             const InputDecoration(labelText: 'SMTP user'),
                       ),
-                      const SizedBox(height: 10),
+                      const SizedBox(height: 8),
                       TextFormField(
                         controller: _passwordCtrl,
                         enabled: !_busy,
@@ -221,7 +221,7 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
                           hintText: 'Leave blank to keep existing',
                         ),
                       ),
-                      const SizedBox(height: 20),
+                      const SizedBox(height: 12),
                       FilledButton(
                         onPressed: _busy ? null : _save,
                         child: const Text('Save'),

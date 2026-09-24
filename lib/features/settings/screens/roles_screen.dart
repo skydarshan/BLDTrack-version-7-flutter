@@ -306,7 +306,7 @@ class _RolesScreenState extends State<RolesScreen> {
                       decoration:
                           const InputDecoration(labelText: 'Name *'),
                     ),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 8),
                     TextFormField(
                       controller: descCtrl,
                       maxLines: 2,
@@ -566,22 +566,13 @@ class _RolesScreenState extends State<RolesScreen> {
             child: RefreshIndicator(
               onRefresh: _load,
               child: _loading
-                  ? ListView(
-                      children: const [
-                        SizedBox(height: 120),
-                        Center(child: CircularProgressIndicator()),
-                      ],
-                    )
+                  ? const CenteredScrollLoader()
                   : _items.isEmpty
-                      ? ListView(
-                          children: const [
-                            EmptyState(message: 'No roles found'),
-                          ],
-                        )
+                      ? EmptyListBody(message: 'No roles found')
                       : ListView.separated(
                           padding: AppTheme.listPadding,
                           itemCount: _items.length + 1,
-                          separatorBuilder: (_, __) => const SizedBox(height: 8),
+                          separatorBuilder: (_, _) => const SizedBox(height: 8),
                           itemBuilder: (context, i) {
                             if (i == _items.length) {
                               return settingsPaginationRow(

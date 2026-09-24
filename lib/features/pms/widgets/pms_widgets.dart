@@ -137,10 +137,12 @@ class KpiCard extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
               children: [
-                if (icon != null)
+                if (icon != null) ...[
                   AppIconBadge(icon: icon!, color: color, size: 34, iconSize: 18),
-                const Spacer(),
+                  const SizedBox(height: 8),
+                ],
                 Text(
                   value,
                   maxLines: 1,
@@ -177,12 +179,12 @@ class EmptyState extends StatelessWidget {
   Widget build(BuildContext context) {
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(32),
+        padding: const EdgeInsets.all(16),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon ?? Icons.inbox_rounded, size: 52, color: AppTheme.brand.withValues(alpha: 0.45)),
-            const SizedBox(height: 12),
+            Icon(icon ?? Icons.inbox_rounded, size: 40, color: AppTheme.brand.withValues(alpha: 0.45)),
+            const SizedBox(height: 8),
             Text(
               message,
               textAlign: TextAlign.center,
@@ -191,6 +193,59 @@ class EmptyState extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Scrollable loader that sits in the middle of the remaining page.
+class CenteredScrollLoader extends StatelessWidget {
+  const CenteredScrollLoader({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final height = constraints.maxHeight.isFinite && constraints.maxHeight > 0
+            ? constraints.maxHeight
+            : 240.0;
+        return ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          children: [
+            SizedBox(
+              height: height,
+              child: const Center(child: CircularProgressIndicator()),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+/// Empty message centered in the remaining page, still pull-to-refreshable.
+class EmptyListBody extends StatelessWidget {
+  const EmptyListBody({super.key, required this.message, this.icon});
+
+  final String message;
+  final IconData? icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final height = constraints.maxHeight.isFinite && constraints.maxHeight > 0
+            ? constraints.maxHeight
+            : 320.0;
+        return ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          children: [
+            SizedBox(
+              height: height,
+              child: EmptyState(message: message, icon: icon),
+            ),
+          ],
+        );
+      },
     );
   }
 }
@@ -205,9 +260,9 @@ class ErrorBanner extends StatelessWidget {
   Widget build(BuildContext context) {
     return Card(
       color: const Color(0xFFFEE2E2),
-      margin: const EdgeInsets.fromLTRB(0, 4, 0, 8),
+      margin: const EdgeInsets.only(bottom: 8),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
+        padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
         child: Row(
           children: [
             const Icon(Icons.error_outline, color: AppTheme.danger),

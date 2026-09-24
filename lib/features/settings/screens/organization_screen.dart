@@ -341,7 +341,7 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
                       maxLines: 3,
                       decoration: const InputDecoration(labelText: 'Address'),
                     ),
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 12),
                     if (!canEditModules)
                       Container(
                         margin: const EdgeInsets.only(bottom: 12),

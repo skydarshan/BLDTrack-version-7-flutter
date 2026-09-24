@@ -544,7 +544,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                           ),
                         ],
                       ),
-                      const SizedBox(height: 20),
+                      const SizedBox(height: 12),
                       const Text(
                         'Progress history',
                         style: TextStyle(
@@ -579,7 +579,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                             ),
                           ),
                         ),
-                      const SizedBox(height: 20),
+                      const SizedBox(height: 12),
                       const Text(
                         'Comments',
                         style: TextStyle(
@@ -627,7 +627,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                           ),
                         ],
                       ),
-                      const SizedBox(height: 20),
+                      const SizedBox(height: 12),
                       const Text(
                         'Media',
                         style: TextStyle(

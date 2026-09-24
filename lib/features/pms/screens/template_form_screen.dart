@@ -141,7 +141,7 @@ class _TemplateFormScreenState extends State<TemplateFormScreen> {
                   ),
                   const SizedBox(height: 12),
                   DropdownButtonFormField<String>(
-                    value: _scope,
+                    initialValue: _scope,
                     decoration: const InputDecoration(labelText: 'Scope'),
                     items: [
                       for (final s in PmsConstants.templateScopes)
@@ -149,7 +149,7 @@ class _TemplateFormScreenState extends State<TemplateFormScreen> {
                     ],
                     onChanged: (v) => setState(() => _scope = v ?? _scope),
                   ),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 12),
                   const Text(
                     'Task tree',
                     style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
@@ -169,7 +169,7 @@ class _TemplateFormScreenState extends State<TemplateFormScreen> {
                       _tasksError = null;
                     }),
                   ),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 12),
                   FilledButton(
                     onPressed: _saving ? null : _submit,
                     child: _saving

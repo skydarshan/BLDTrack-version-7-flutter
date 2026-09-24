@@ -197,7 +197,7 @@ class _PmsHomeScreenState extends State<PmsHomeScreen> {
                       delegate: SliverChildListDelegate([
                         if (_error != null) ...[
                           ErrorBanner(message: _error!, onRetry: _load),
-                          const SizedBox(height: 12),
+                          const SizedBox(height: 8),
                         ],
                         if (ready > 0 || pending > 0) ...[
                           _VerificationBanner(
@@ -206,56 +206,87 @@ class _PmsHomeScreenState extends State<PmsHomeScreen> {
                             onReady: () => context.go('/pms/approvals'),
                             onPending: () => context.go('/pms/approvals'),
                           ),
-                          const SizedBox(height: 12),
+                          const SizedBox(height: 8),
                         ],
-                        GridView.count(
-                          crossAxisCount: 2,
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          mainAxisSpacing: 10,
-                          crossAxisSpacing: 10,
-                          childAspectRatio: 1.55,
-                          children: [
-                            BentoStatCard(
-                              label: 'Projects',
-                              value: '${projects?['total'] ?? 0}',
-                              icon: Icons.folder_special_rounded,
-                              color: AppTheme.info,
-                              onTap: () => context.go('/pms/projects'),
-                            ),
-                            BentoStatCard(
-                              label: 'Active tasks',
-                              value: '${tasks?['total'] ?? 0}',
-                              icon: Icons.task_alt_rounded,
-                              color: AppTheme.success,
-                              onTap: () => context.go('/pms/tasks'),
-                            ),
-                            BentoStatCard(
-                              label: 'Overdue',
-                              value: '$overdue',
-                              icon: Icons.warning_amber_rounded,
-                              color: overdue > 0 ? AppTheme.danger : AppTheme.muted,
-                              highlight: overdue > 0,
-                              onTap: () => context.go('/pms/tasks?mine=1'),
-                            ),
-                            BentoStatCard(
-                              label: 'Approvals',
-                              value: '${ready + pending}',
-                              hint: pending > 0 || ready > 0
-                                  ? '$ready ready · $pending final'
-                                  : null,
-                              icon: Icons.verified_rounded,
-                              color: (ready + pending) > 0 ? AppTheme.accent : AppTheme.muted,
-                              highlight: (ready + pending) > 0,
-                              onTap: () => context.go('/pms/approvals'),
-                            ),
-                          ],
+                        LayoutBuilder(
+                          builder: (context, constraints) {
+                            final cardH =
+                                ((constraints.maxWidth - AppTheme.gridGap) / 2) * 0.78;
+                            Widget tile(Widget child) => Expanded(child: child);
+                            return Column(
+                              children: [
+                                SizedBox(
+                                  height: cardH,
+                                  child: Row(
+                                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                                    children: [
+                                      tile(BentoStatCard(
+                                        expand: true,
+                                        badgeSize: 44,
+                                        glyphSize: 24,
+                                        label: 'Projects',
+                                        value: '${projects?['total'] ?? 0}',
+                                        icon: Icons.folder_special_rounded,
+                                        color: AppTheme.info,
+                                        onTap: () => context.go('/pms/projects'),
+                                      )),
+                                      const SizedBox(width: AppTheme.gridGap),
+                                      tile(BentoStatCard(
+                                        expand: true,
+                                        badgeSize: 44,
+                                        glyphSize: 24,
+                                        label: 'Active tasks',
+                                        value: '${tasks?['total'] ?? 0}',
+                                        icon: Icons.task_alt_rounded,
+                                        color: AppTheme.success,
+                                        onTap: () => context.go('/pms/tasks'),
+                                      )),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(height: AppTheme.gridGap),
+                                SizedBox(
+                                  height: cardH,
+                                  child: Row(
+                                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                                    children: [
+                                      tile(BentoStatCard(
+                                        expand: true,
+                                        badgeSize: 44,
+                                        glyphSize: 24,
+                                        label: 'Overdue',
+                                        value: '$overdue',
+                                        icon: Icons.warning_amber_rounded,
+                                        color: overdue > 0 ? AppTheme.danger : AppTheme.muted,
+                                        highlight: overdue > 0,
+                                        onTap: () => context.go('/pms/tasks?mine=1'),
+                                      )),
+                                      const SizedBox(width: AppTheme.gridGap),
+                                      tile(BentoStatCard(
+                                        expand: true,
+                                        badgeSize: 44,
+                                        glyphSize: 24,
+                                        label: 'Approvals',
+                                        value: '${ready + pending}',
+                                        hint: pending > 0 || ready > 0
+                                            ? '$ready ready · $pending final'
+                                            : null,
+                                        icon: Icons.verified_rounded,
+                                        color: (ready + pending) > 0
+                                            ? AppTheme.accent
+                                            : AppTheme.muted,
+                                        highlight: (ready + pending) > 0,
+                                        onTap: () => context.go('/pms/approvals'),
+                                      )),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            );
+                          },
                         ),
-                        if (avg != null) ...[
-                          const SizedBox(height: 12),
-                          _ProgressStrip(percent: avg),
-                        ],
-                        const SizedBox(height: 18),
+                        if (avg != null) _ProgressStrip(percent: avg),
+                        const SizedBox(height: AppTheme.sectionGap),
                         SectionHeader(
                           title: 'Recent projects',
                           color: AppTheme.brand,
@@ -317,7 +348,7 @@ class _VerificationBanner extends StatelessWidget {
         border: Border.all(color: AppTheme.border),
         boxShadow: AppTheme.cardShadow,
       ),
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -328,7 +359,7 @@ class _VerificationBanner extends StatelessWidget {
               Text('Needs your attention', style: AppTheme.titleSmall),
             ],
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
           if (ready > 0)
             _AttentionRow(
               label: 'Ready for completion',
@@ -419,7 +450,7 @@ class _ProgressStrip extends StatelessWidget {
                 : AppTheme.danger;
 
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(14),

@@ -1,4 +1,5 @@
 /// Shared response unwrapping for `/api/v1` envelopes.
+library;
 
 class PaginatedResult {
   const PaginatedResult({

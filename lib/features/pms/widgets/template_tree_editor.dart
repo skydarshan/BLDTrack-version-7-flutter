@@ -209,7 +209,7 @@ class _TemplateNodeEditor extends StatelessWidget {
                 Expanded(
                   flex: 2,
                   child: DropdownButtonFormField<String>(
-                    value: (node['priority']?.toString().isNotEmpty ?? false)
+                    initialValue: (node['priority']?.toString().isNotEmpty ?? false)
                         ? node['priority'].toString()
                         : 'medium',
                     decoration: const InputDecoration(

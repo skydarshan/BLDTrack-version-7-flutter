@@ -344,7 +344,7 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen>
                       ? const EmptyState(message: 'No audit entries')
                       : ListView.separated(
                           itemCount: rows.length,
-                          separatorBuilder: (_, __) => const Divider(height: 1),
+                          separatorBuilder: (_, _) => const Divider(height: 1),
                           itemBuilder: (_, i) {
                             final row = rows[i];
                             return ListTile(

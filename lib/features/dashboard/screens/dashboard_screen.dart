@@ -85,7 +85,7 @@ class DashboardScreen extends StatelessWidget {
                     'API connection',
                     style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
                   ),
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 8),
                   Text(
                     ApiConfig.apiV1Base,
                     style: const TextStyle(
@@ -114,7 +114,7 @@ class DashboardScreen extends StatelessWidget {
                     'Next steps (after your check)',
                     style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
                   ),
-                  SizedBox(height: 10),
+                  SizedBox(height: 8),
                   Text('• Requisition Requests'),
                   Text('• Rate Comparatives & Approvals'),
                   Text('• Purchase Orders'),
@@ -138,7 +138,7 @@ class _InfoRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.only(bottom: 8),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

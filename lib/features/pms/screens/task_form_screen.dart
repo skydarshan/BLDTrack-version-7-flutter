@@ -196,7 +196,7 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
   }
 
   String? _iso(DateTime? d) =>
-      d == null ? null : d.toIso8601String().substring(0, 10);
+      d?.toIso8601String().substring(0, 10);
 
   bool _validateForm() {
     _fieldErrors.clear();
@@ -375,7 +375,7 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
                     ),
                   const SizedBox(height: 12),
                   DropdownButtonFormField<String>(
-                    value: _priority,
+                    initialValue: _priority,
                     decoration: const InputDecoration(labelText: 'Priority'),
                     items: [
                       for (final p in PmsConstants.priorities)
@@ -385,7 +385,7 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
                   ),
                   const SizedBox(height: 12),
                   DropdownButtonFormField<String>(
-                    value: _status,
+                    initialValue: _status,
                     decoration: const InputDecoration(labelText: 'Status'),
                     items: [
                       for (final s in PmsConstants.taskSettableStatuses)
@@ -512,7 +512,7 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
                     files: _files,
                     onChanged: (v) => setState(() => _files = v),
                   ),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 12),
                   FilledButton(
                     onPressed: _saving ? null : _submit,
                     child: _saving

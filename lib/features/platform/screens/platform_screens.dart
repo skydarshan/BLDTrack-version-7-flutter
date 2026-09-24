@@ -77,15 +77,15 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       body: RefreshIndicator(
         onRefresh: _load,
         child: _loading
-            ? ListView(children: const [SizedBox(height: 80), Center(child: CircularProgressIndicator())])
+            ? const CenteredScrollLoader()
             : _error != null
                 ? ListView(padding: AppTheme.formPadding, children: [ErrorBanner(message: _error!, onRetry: _load)])
                 : _items.isEmpty
-                    ? ListView(children: const [EmptyState(message: 'No notifications')])
+                    ? EmptyListBody(message: 'No notifications')
                     : ListView.separated(
                         padding: AppTheme.formPadding,
                         itemCount: _items.length,
-                        separatorBuilder: (_, __) => const Divider(height: 1),
+                        separatorBuilder: (_, _) => const Divider(height: 1),
                         itemBuilder: (context, i) {
                           final row = _items[i];
                           final unread = row['read'] != true && row['isRead'] != true;
@@ -97,7 +97,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                               [
                                 if (body != null && row['title'] != null) body,
                                 formatDateTime(row['createdAt'] ?? row['created_at']),
-                              ].where((e) => e != null && e.isNotEmpty).join(' · '),
+                              ].where((e) => e.isNotEmpty).join(' · '),
                             ),
                             onTap: () async {
                               final id = idOf(row);

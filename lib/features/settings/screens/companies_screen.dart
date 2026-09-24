@@ -132,30 +132,30 @@ class _CompaniesScreenState extends State<CompaniesScreen> {
                   decoration:
                       const InputDecoration(labelText: 'Company name *'),
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: 8),
                 TextFormField(
                   controller: codeCtrl,
                   decoration: const InputDecoration(labelText: 'Code'),
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: 8),
                 TextFormField(
                   controller: contactCtrl,
                   decoration:
                       const InputDecoration(labelText: 'Contact person'),
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: 8),
                 TextFormField(
                   controller: phoneCtrl,
                   keyboardType: TextInputType.phone,
                   decoration:
                       const InputDecoration(labelText: 'Phone number'),
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: 8),
                 TextFormField(
                   controller: gstCtrl,
                   decoration: const InputDecoration(labelText: 'GST number'),
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: 8),
                 TextFormField(
                   controller: panCtrl,
                   decoration: const InputDecoration(labelText: 'PAN number'),
@@ -290,22 +290,13 @@ class _CompaniesScreenState extends State<CompaniesScreen> {
             child: RefreshIndicator(
               onRefresh: _load,
               child: _loading
-                  ? ListView(
-                      children: const [
-                        SizedBox(height: 120),
-                        Center(child: CircularProgressIndicator()),
-                      ],
-                    )
+                  ? const CenteredScrollLoader()
                   : _items.isEmpty
-                      ? ListView(
-                          children: const [
-                            EmptyState(message: 'No companies found'),
-                          ],
-                        )
+                      ? EmptyListBody(message: 'No companies found')
                       : ListView.separated(
                           padding: AppTheme.listPadding,
                           itemCount: _items.length + 1,
-                          separatorBuilder: (_, __) => const SizedBox(height: 8),
+                          separatorBuilder: (_, _) => const SizedBox(height: 8),
                           itemBuilder: (context, i) {
                             if (i == _items.length) {
                               return settingsPaginationRow(

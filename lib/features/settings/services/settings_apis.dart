@@ -175,7 +175,7 @@ class SettingsApis {
         'from_uom': fromUom,
         'to_uom': toUom,
         'qty': qty,
-        if (rate != null) 'rate': rate,
+        'rate': ?rate,
       },
     );
     return unwrapDataMap(res.data);
