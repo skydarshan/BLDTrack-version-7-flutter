@@ -202,26 +202,34 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
     _fieldErrors.clear();
     if (!widget.isEdit) {
       _fieldErrors.set('project', requiredSelection(_projectId, 'Project'));
-      if (_parentId == null || _parentId!.isEmpty) {
-        _fieldErrors.set(
-          'coordinator',
-          requiredSelection(_coordinatorId, 'Coordinator'),
-        );
-        _fieldErrors.set(
-          'members',
-          requiredList(_memberIds, 'At least one assigned member'),
-        );
-      }
+      _fieldErrors.set(
+        'coordinator',
+        requiredSelection(_coordinatorId, 'Coordinator'),
+      );
+      _fieldErrors.set('startDate', requiredDate(_startDate, 'Start date'));
+      _fieldErrors.set(
+        'dueDate',
+        dateRangeError(
+          start: _startDate,
+          end: _dueDate,
+          startLabel: 'Start date',
+          endLabel: 'Due date',
+        ),
+      );
+    } else if (_startDate != null && _dueDate != null) {
+      _fieldErrors.set(
+        'dueDate',
+        dateRangeError(
+          start: _startDate,
+          end: _dueDate,
+          startLabel: 'Start date',
+          endLabel: 'Due date',
+        ),
+      );
     }
-    _fieldErrors.set('startDate', requiredDate(_startDate, 'Start date'));
     _fieldErrors.set(
-      'dueDate',
-      dateRangeError(
-        start: _startDate,
-        end: _dueDate,
-        startLabel: 'Start date',
-        endLabel: 'Due date',
-      ),
+      'members',
+      requiredList(_memberIds, 'At least one assigned member'),
     );
     setState(() {});
     return !_fieldErrors.hasErrors;

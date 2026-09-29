@@ -116,7 +116,7 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
       final org = await apis.getOrganization();
       List<Map<String, dynamic>> roles = [];
       try {
-        final rolePage = await apis.roles.list({'limit': 200, 'isActive': true});
+        final rolePage = await apis.roles.list({'limit': 200});
         roles = rolePage.items;
       } catch (_) {
         // Roles are optional for viewing; needed for approval dropdowns.

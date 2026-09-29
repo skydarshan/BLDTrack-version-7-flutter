@@ -109,10 +109,13 @@ class _InventoryHomeScreenState extends State<InventoryHomeScreen> {
                               itemCount: _items.length,
                               itemBuilder: (context, i) {
                                 final row = _items[i];
-                                final title = labelOf(row['item'] ?? row['item_id'] ?? row);
-                                final balance = '${row['balance'] ?? row['available_qty'] ?? row['remaining_qty'] ?? ''}';
+                                final title = labelOf(
+                                  row['item_name'] ?? row['item'] ?? row['item_id'] ?? row,
+                                );
+                                final balance =
+                                    '${firstNonNull(row, ['remaining_quantity', 'remaining_qty', 'available_qty', 'balance']) ?? ''}';
                                 final subtitle = _view == 'stats'
-                                    ? 'In ${row['in_qty'] ?? row['qty_in'] ?? '—'} · Out ${row['out_qty'] ?? row['qty_out'] ?? '—'}'
+                                    ? 'In ${firstNonNull(row, ['inventory_in_quantity', 'in_qty', 'qty_in']) ?? '—'} · Remaining ${firstNonNull(row, ['remaining_quantity', 'remaining_qty']) ?? '—'}'
                                     : [
                                         if (row['vendor'] != null) labelOf(row['vendor']),
                                         '${row['quantity'] ?? row['qty'] ?? ''}',
@@ -205,11 +208,95 @@ class _ImrListScreenState extends State<ImrListScreen> {
                               title: Text(row['issueSlip_number']?.toString() ?? 'Slip'),
                               subtitle: Text('${labelOf(row['site_id'] ?? row['site'])} · ${row['type'] ?? ''}'),
                               trailing: Text(formatDate(row['issue_Date'])),
+                              onTap: () {
+                                final id = idOf(row);
+                                if (id != null) {
+                                  context.push('/inventory/imr/$id');
+                                }
+                              },
                             ),
                           );
                         },
                       ),
       ),
+    );
+  }
+}
+
+class ImrDetailScreen extends StatefulWidget {
+  const ImrDetailScreen({super.key, required this.id});
+  final String id;
+
+  @override
+  State<ImrDetailScreen> createState() => _ImrDetailScreenState();
+}
+
+class _ImrDetailScreenState extends State<ImrDetailScreen> {
+  Map<String, dynamic>? _doc;
+  bool _loading = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+  }
+
+  Future<void> _load() async {
+    try {
+      final doc = await context.read<AppServices>().inventory.getImr(widget.id);
+      if (!mounted) return;
+      setState(() {
+        _doc = doc;
+        _loading = false;
+      });
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e.message;
+        _loading = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final doc = _doc;
+    final items = asMapList(doc?['items'] is List ? doc!['items'] as List : const []);
+    return Scaffold(
+      appBar: AppBar(title: Text(doc?['issueSlip_number']?.toString() ?? 'Issue slip')),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : _error != null
+              ? Padding(
+                  padding: AppTheme.formPadding,
+                  child: ErrorBanner(message: _error!, onRetry: _load),
+                )
+              : ListView(
+                  padding: AppTheme.formPadding,
+                  children: [
+                    Text('Site: ${labelOf(doc?['site_id'] ?? doc?['site'])}'),
+                    Text('Type: ${doc?['type'] ?? '—'}'),
+                    Text('Inventory: ${doc?['inventoryType'] ?? '—'}'),
+                    Text('Date: ${formatDate(doc?['issue_Date'])}'),
+                    Text('Authorized by: ${labelOf(doc?['authorizedBy'])}'),
+                    Text('Received by: ${doc?['receivedByName'] ?? labelOf(doc?['receivedBy'])}'),
+                    const Divider(height: 32),
+                    const Text('Items', style: TextStyle(fontWeight: FontWeight.w700)),
+                    if (items.isEmpty)
+                      const Padding(
+                        padding: EdgeInsets.only(top: 8),
+                        child: Text('No line items'),
+                      )
+                    else
+                      for (final line in items)
+                        ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: Text(labelOf(line['item_id'] ?? line['item'] ?? line['item_name'])),
+                          subtitle: Text('Qty ${line['issued_Qty'] ?? line['qty'] ?? '—'}'),
+                        ),
+                  ],
+                ),
     );
   }
 }
@@ -269,6 +356,10 @@ class _ImrCreateScreenState extends State<ImrCreateScreen> {
       showPmsSnack(context, 'Site, users and item are required', error: true);
       return;
     }
+    if (_slip.trim().isEmpty) {
+      showPmsSnack(context, 'Issue slip number is required — pick the site again', error: true);
+      return;
+    }
     setState(() => _saving = true);
     try {
       await context.read<AppServices>().inventory.createImr({
@@ -325,7 +416,15 @@ class _ImrCreateScreenState extends State<ImrCreateScreen> {
                 final n = await context.read<AppServices>().inventory.nextSlipNumber(p.value);
                 if (!mounted) return;
                 setState(() => _slip = '${n['issueSlip_number'] ?? n['number'] ?? n['next'] ?? ''}');
-              } catch (_) {}
+                if (_slip.isEmpty) {
+                  showPmsSnack(context, 'Could not fetch the next slip number', error: true);
+                }
+              } on ApiException catch (e) {
+                if (mounted) {
+                  setState(() => _slip = '');
+                  showPmsSnack(context, e.message, error: true);
+                }
+              }
             },
           ),
           const SizedBox(height: 8),
@@ -530,25 +629,64 @@ class _TransferDetailScreenState extends State<TransferDetailScreen> {
     }
   }
 
+  Future<void> _approve() async {
+    try {
+      await context.read<AppServices>().inventory.updateTransferStatus(widget.id, 'Approved');
+      if (!mounted) return;
+      showPmsSnack(context, 'Approved');
+      _load();
+    } on ApiException catch (e) {
+      if (mounted) showPmsSnack(context, e.message, error: true);
+    }
+  }
+
   Future<void> _dispatch() async {
+    final doc = _doc;
+    if (doc == null) return;
+    final current = doc['status']?.toString();
+    if (current != 'Approved') {
+      showPmsSnack(context, 'Approve the transfer before dispatch', error: true);
+      return;
+    }
+    final items = transferDispatchItems(doc);
+    if (items.isEmpty) {
+      showPmsSnack(context, 'Cannot dispatch — transfer items are missing', error: true);
+      return;
+    }
     try {
       await context.read<AppServices>().inventory.dispatchTransfer(widget.id, {
-        'vehicle': {'vehicle_number': '', 'driver_name': ''},
+        'items': items,
+        'vehicle': {
+          'vehicle_number': '',
+          'driver_name': '',
+          'driver_contact': '',
+        },
       });
+      if (!mounted) return;
       showPmsSnack(context, 'Dispatched');
       _load();
     } on ApiException catch (e) {
-      showPmsSnack(context, e.message, error: true);
+      if (mounted) showPmsSnack(context, e.message, error: true);
     }
   }
 
   Future<void> _receive() async {
+    final doc = _doc;
+    if (doc == null) return;
+    final items = transferReceiveItems(doc);
+    if (items.isEmpty) {
+      showPmsSnack(context, 'Cannot receive — no dispatched quantity left', error: true);
+      return;
+    }
     try {
-      await context.read<AppServices>().inventory.receiveTransfer(widget.id, {});
+      await context.read<AppServices>().inventory.receiveTransfer(widget.id, {
+        'items': items,
+      });
+      if (!mounted) return;
       showPmsSnack(context, 'Received');
       _load();
     } on ApiException catch (e) {
-      showPmsSnack(context, e.message, error: true);
+      if (mounted) showPmsSnack(context, e.message, error: true);
     }
   }
 
@@ -575,6 +713,7 @@ class _TransferDetailScreenState extends State<TransferDetailScreen> {
                     Wrap(
                       spacing: 8,
                       children: [
+                        FilledButton(onPressed: _approve, child: const Text('Approve')),
                         FilledButton(onPressed: _dispatch, child: const Text('Dispatch')),
                         OutlinedButton(onPressed: _receive, child: const Text('Receive')),
                       ],

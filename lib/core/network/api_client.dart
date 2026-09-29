@@ -43,7 +43,8 @@ class ApiClient {
           handler.next(options);
         },
         onError: (error, handler) async {
-          if (error.response?.statusCode == 401) {
+          if (error.response?.statusCode == 401 &&
+              !_isPublicAuthPath(error.requestOptions.path)) {
             await _tokenStorage.clear();
             _onUnauthorized?.call();
           }
@@ -56,6 +57,12 @@ class ApiClient {
   late final Dio _dio;
   final TokenStorage _tokenStorage;
   final UnauthorizedHandler? _onUnauthorized;
+
+  bool _isPublicAuthPath(String path) {
+    return path.contains('/auth/login') ||
+        path.contains('/auth/register-organization') ||
+        path.contains('/auth/check-registration');
+  }
 
   Dio get dio => _dio;
 

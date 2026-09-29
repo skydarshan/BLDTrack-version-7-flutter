@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
+import '../../../core/network/api_exception.dart';
 import '../../../core/org/org_modules.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/form_validators.dart';
@@ -44,6 +45,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   String _taskStep1 = '';
   String _taskStep2 = '';
   String? _stepError;
+  String? _subdomain;
 
   @override
   void dispose() {
@@ -111,7 +113,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
         _showError(nameErr);
         return false;
       }
-      final phoneErr = FormValidators.requiredField(_adminPhoneController.text, 'Phone number');
+      final phoneErr = FormValidators.indiaPhone(_adminPhoneController.text);
       if (phoneErr != null) {
         _showError(phoneErr);
         return false;
@@ -171,6 +173,40 @@ class _RegisterScreenState extends State<RegisterScreen> {
     FocusScope.of(context).unfocus();
     if (_step <= 3 && !(_formKey.currentState?.validate() ?? false)) return;
     if (!_validateCurrentStep()) return;
+
+    final auth = context.read<AuthProvider>();
+    if (_step == 1) {
+      try {
+        final check = await auth.checkRegistration(
+          organizationName: _orgNameController.text.trim(),
+        );
+        var subdomain = check['subdomain']?.toString();
+        if (subdomain == null || subdomain.isEmpty) {
+          subdomain = buildSubdomain(_orgNameController.text);
+        }
+        if (check['subdomainAvailable'] == false) {
+          subdomain = uniquifySubdomain(subdomain);
+        }
+        setState(() => _subdomain = subdomain);
+      } on ApiException catch (e) {
+        _showError(e.message);
+        return;
+      }
+    } else if (_step == 2) {
+      try {
+        final check = await auth.checkRegistration(
+          adminEmail: _adminEmailController.text.trim(),
+        );
+        if (check['emailAvailable'] == false) {
+          _showError('This admin email is already registered');
+          return;
+        }
+      } on ApiException catch (e) {
+        _showError(e.message);
+        return;
+      }
+    }
+
     if (_step < 4) {
       setState(() => _step += 1);
       return;
@@ -189,7 +225,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     final auth = context.read<AuthProvider>();
     final request = RegisterOrganizationRequest(
       organizationName: _orgNameController.text.trim(),
-      subdomain: buildSubdomain(_orgNameController.text),
+      subdomain: _subdomain ?? buildSubdomain(_orgNameController.text),
       adminName: _adminNameController.text.trim(),
       adminEmail: _adminEmailController.text.trim().toLowerCase(),
       adminPassword: _adminPasswordController.text,
@@ -220,9 +256,17 @@ class _RegisterScreenState extends State<RegisterScreen> {
     if (!mounted) return;
 
     if (ok) {
-      try {
-        await context.read<OrgSession>().refresh();
-      } catch (_) {}
+      final orgOk = await context.read<OrgSession>().refresh();
+      if (!mounted) return;
+      if (!orgOk) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Registered, but organization profile failed to load. Pull to refresh after opening the app.',
+            ),
+          ),
+        );
+      }
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Organization registered successfully')),

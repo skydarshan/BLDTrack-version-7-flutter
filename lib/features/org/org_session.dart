@@ -59,7 +59,7 @@ class OrgSession extends ChangeNotifier {
     await refresh();
   }
 
-  Future<void> refresh() async {
+  Future<bool> refresh() async {
     _loading = true;
     notifyListeners();
     try {
@@ -72,8 +72,10 @@ class OrgSession extends ChangeNotifier {
         isSuperAdmin: _perms.isSuperAdmin,
       );
       await _tokenStorage.saveWorkspace(_workspace);
+      return true;
     } on ApiException {
       _organization ??= null;
+      return false;
     } finally {
       _loading = false;
       notifyListeners();

@@ -16,6 +16,14 @@ class FormValidators {
     return null;
   }
 
+  static String? indiaPhone(String? value, [String label = 'Phone number']) {
+    final required = requiredField(value, label);
+    if (required != null) return required;
+    final digits = value!.replaceAll(RegExp(r'\D'), '');
+    if (digits.length != 10) return '$label must be 10 digits';
+    return null;
+  }
+
   static String? password(String? value) {
     final required = requiredField(value, 'Password');
     if (required != null) return required;

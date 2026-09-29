@@ -82,3 +82,10 @@ String buildSubdomain(String organizationName) {
   final padded = '${base}org';
   return padded.length > 63 ? padded.substring(0, 63) : padded;
 }
+
+String uniquifySubdomain(String base) {
+  final stamp = DateTime.now().millisecondsSinceEpoch.toString();
+  final tail = stamp.substring(stamp.length - 4);
+  final next = '$base$tail';
+  return next.length > 63 ? next.substring(0, 63) : next;
+}

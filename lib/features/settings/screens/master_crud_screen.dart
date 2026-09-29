@@ -223,6 +223,15 @@ class _MasterCrudScreenState extends State<MasterCrudScreen> {
                             );
                             return;
                           }
+                          if (['location_name', 'activity_name'].contains(f.key) &&
+                              controllers[f.key]!.text.trim().length < 2) {
+                            showPmsSnack(
+                              context,
+                              '${f.label} must be at least 2 characters',
+                              error: true,
+                            );
+                            return;
+                          }
                         }
                         final payload = widget.buildPayload != null
                             ? widget.buildPayload!(controllers, extras)

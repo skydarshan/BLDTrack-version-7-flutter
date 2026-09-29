@@ -118,6 +118,10 @@ GoRouter createAppRouter(
           GoRoute(path: '/inventory', builder: (_, _) => const InventoryHomeScreen()),
           GoRoute(path: '/inventory/imr', builder: (_, _) => const ImrListScreen()),
           GoRoute(path: '/inventory/imr/new', builder: (_, _) => const ImrCreateScreen()),
+          GoRoute(
+            path: '/inventory/imr/:id',
+            builder: (_, state) => ImrDetailScreen(id: state.pathParameters['id']!),
+          ),
           GoRoute(path: '/inventory/transfers', builder: (_, _) => const TransferListScreen()),
           GoRoute(path: '/inventory/transfers/new', builder: (_, _) => const TransferCreateScreen()),
           GoRoute(

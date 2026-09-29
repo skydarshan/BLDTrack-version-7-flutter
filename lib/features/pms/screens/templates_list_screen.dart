@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/api_helpers.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../auth/providers/auth_provider.dart';
 import '../services/pms_services.dart';
 import '../utils/site_options.dart';
 import '../widgets/pickers.dart';
@@ -146,9 +147,33 @@ class _TemplatesListScreenState extends State<TemplatesListScreen> {
     final codeCtrl = TextEditingController();
     String? siteId;
     String siteLabel = '';
+    String? managerId;
+    String managerLabel = '';
+    String? leadId;
+    String leadLabel = '';
+    String? coordinatorId;
+    String coordinatorLabel = '';
+    var memberIds = <String>[];
+    var memberLabels = <String, String>{};
+    var startDate = DateTime.now();
+    var endDate = DateTime.now().add(const Duration(days: 30));
     List<OptionItem> sites = const [];
+    List<OptionItem> users = const [];
     try {
+      final api = context.read<PmsServices>();
       sites = await loadSiteOptions(context);
+      users = mapToOptions(await api.masters.listUsers());
+      final me = context.read<AuthProvider>().user;
+      if (me != null) {
+        managerId = me.id;
+        managerLabel = me.name;
+        leadId = me.id;
+        leadLabel = me.name;
+        coordinatorId = me.id;
+        coordinatorLabel = me.name;
+        memberIds = [me.id];
+        memberLabels[me.id] = me.name;
+      }
     } catch (_) {}
     if (!mounted) return;
 
@@ -193,6 +218,113 @@ class _TemplatesListScreenState extends State<TemplatesListScreen> {
                         });
                       },
                     ),
+                    const SizedBox(height: 12),
+                    PickerField(
+                      label: 'Project manager',
+                      required: true,
+                      valueLabel: managerLabel,
+                      onTap: () async {
+                        final picked = await showOptionPicker(
+                          context,
+                          title: 'Project manager',
+                          options: users,
+                          selected: managerId,
+                        );
+                        if (picked == null) return;
+                        setModal(() {
+                          managerId = picked.value;
+                          managerLabel = picked.label;
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    PickerField(
+                      label: 'Project lead',
+                      required: true,
+                      valueLabel: leadLabel,
+                      onTap: () async {
+                        final picked = await showOptionPicker(
+                          context,
+                          title: 'Project lead',
+                          options: users,
+                          selected: leadId,
+                        );
+                        if (picked == null) return;
+                        setModal(() {
+                          leadId = picked.value;
+                          leadLabel = picked.label;
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    PickerField(
+                      label: 'Task coordinator',
+                      required: true,
+                      valueLabel: coordinatorLabel,
+                      onTap: () async {
+                        final picked = await showOptionPicker(
+                          context,
+                          title: 'Task coordinator',
+                          options: users,
+                          selected: coordinatorId,
+                        );
+                        if (picked == null) return;
+                        setModal(() {
+                          coordinatorId = picked.value;
+                          coordinatorLabel = picked.label;
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    PickerField(
+                      label: 'Assigned members',
+                      required: true,
+                      valueLabel: memberIds.isEmpty
+                          ? ''
+                          : memberIds.map((m) => memberLabels[m] ?? m).join(', '),
+                      onTap: () async {
+                        final picked = await showOptionPicker(
+                          context,
+                          title: 'Add member',
+                          options: users,
+                        );
+                        if (picked == null) return;
+                        setModal(() {
+                          if (!memberIds.contains(picked.value)) {
+                            memberIds = [...memberIds, picked.value];
+                            memberLabels[picked.value] = picked.label;
+                          }
+                        });
+                      },
+                    ),
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text('Start ${formatDate(startDate.toIso8601String())}'),
+                      trailing: const Icon(Icons.calendar_today_outlined),
+                      onTap: () async {
+                        final d = await showDatePicker(
+                          context: context,
+                          initialDate: startDate,
+                          firstDate: DateTime(2020),
+                          lastDate: DateTime(2100),
+                        );
+                        if (d != null) setModal(() => startDate = d);
+                      },
+                    ),
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text('End ${formatDate(endDate.toIso8601String())}'),
+                      trailing: const Icon(Icons.event_outlined),
+                      onTap: () async {
+                        final d = await showDatePicker(
+                          context: context,
+                          initialDate: endDate,
+                          firstDate: DateTime(2020),
+                          lastDate: DateTime(2100),
+                        );
+                        if (d != null) setModal(() => endDate = d);
+                      },
+                    ),
                   ],
                 ),
               ),
@@ -212,8 +344,17 @@ class _TemplatesListScreenState extends State<TemplatesListScreen> {
       },
     );
     if (ok != true || !mounted) return;
-    if (nameCtrl.text.trim().isEmpty || siteId == null || siteId!.isEmpty) {
-      showPmsSnack(context, 'Name and site are required', error: true);
+    if (nameCtrl.text.trim().isEmpty ||
+        siteId == null ||
+        managerId == null ||
+        leadId == null ||
+        coordinatorId == null ||
+        memberIds.isEmpty) {
+      showPmsSnack(
+        context,
+        'Name, site, manager, lead, coordinator and at least one member are required',
+        error: true,
+      );
       return;
     }
     try {
@@ -223,6 +364,14 @@ class _TemplatesListScreenState extends State<TemplatesListScreen> {
           'project_name': nameCtrl.text.trim(),
           if (codeCtrl.text.trim().isNotEmpty) 'code': codeCtrl.text.trim(),
           'site': siteId,
+          'project_manager': managerId,
+          'project_lead': leadId,
+          'default_coordinator': coordinatorId,
+          'assigned_members': memberIds,
+          'timeline': {
+            'start_date': startDate.toIso8601String().substring(0, 10),
+            'end_date': endDate.toIso8601String().substring(0, 10),
+          },
         },
       );
       if (!mounted) return;

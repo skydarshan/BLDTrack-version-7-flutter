@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/api_helpers.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/utils/form_validators.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../pms/widgets/pickers.dart';
 import '../../pms/widgets/pms_widgets.dart';
@@ -242,13 +243,18 @@ class _UsersScreenState extends State<UsersScreen> {
                           showPmsSnack(context, 'Email is required', error: true);
                           return;
                         }
-                        if (!isEdit && passwordCtrl.text.isEmpty) {
-                          showPmsSnack(
-                            context,
-                            'Password is required',
-                            error: true,
-                          );
-                          return;
+                        if (!isEdit) {
+                          final pwdErr = FormValidators.strongPassword(passwordCtrl.text);
+                          if (pwdErr != null) {
+                            showPmsSnack(context, pwdErr, error: true);
+                            return;
+                          }
+                        } else if (passwordCtrl.text.trim().isNotEmpty) {
+                          final pwdErr = FormValidators.strongPassword(passwordCtrl.text);
+                          if (pwdErr != null) {
+                            showPmsSnack(context, pwdErr, error: true);
+                            return;
+                          }
                         }
                         if (roleId == null || roleId!.isEmpty) {
                           showPmsSnack(context, 'Role is required', error: true);

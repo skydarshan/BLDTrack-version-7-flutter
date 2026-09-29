@@ -44,18 +44,35 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   }
 
   void _openNotification(Map<String, dynamic> row) {
-    final link = row['link']?.toString() ?? row['metadata']?['link']?.toString();
-    if (link != null && link.startsWith('/')) {
-      context.push(link);
+    final rawLink = row['link']?.toString() ??
+        (row['metadata'] is Map ? row['metadata']['link']?.toString() : null);
+    final mapped = flutterNotificationPath(rawLink);
+    if (mapped != null) {
+      context.push(mapped);
       return;
     }
-    final entityType = row['entityType']?.toString() ?? row['metadata']?['entityType']?.toString();
-    final entityId = idOf(row['entityId'] ?? row['metadata']?['entityId']);
+    final entityType = row['entityType']?.toString() ??
+        (row['metadata'] is Map ? row['metadata']['entityType']?.toString() : null);
+    final entityId = idOf(
+      row['entityId'] ?? (row['metadata'] is Map ? row['metadata']['entityId'] : null),
+    );
     if (entityId == null) return;
-    if (entityType == 'task') {
-      context.push('/pms/tasks/$entityId');
-    } else if (entityType == 'project') {
-      context.push('/pms/projects/$entityId');
+    switch (entityType) {
+      case 'task':
+        context.push('/pms/tasks/$entityId');
+      case 'project':
+        context.push('/pms/projects/$entityId');
+      case 'requisition':
+      case 'requisition_request':
+        context.push('/procurement/rr/$entityId');
+      case 'rate_comparative':
+        context.push('/procurement/rc/$entityId');
+      case 'purchase_order':
+      case 'requisition_order':
+        context.push('/procurement/po/$entityId');
+      case 'dmr':
+      case 'dmr_purchase_order':
+        context.push('/dmr/status/$entityId');
     }
   }
 
@@ -189,7 +206,7 @@ class _BillingScreenState extends State<BillingScreen> {
                       Card(
                         child: ListTile(
                           title: Text(p['name']?.toString() ?? 'Plan'),
-                          subtitle: Text('${p['price'] ?? p['amount'] ?? ''} ${p['currency'] ?? ''}'),
+                          subtitle: Text(planPriceLabel(p)),
                         ),
                       ),
                     const SizedBox(height: 16),

@@ -269,6 +269,7 @@ class _ItemsScreenState extends State<ItemsScreen> {
                     const SizedBox(height: 8),
                     PickerField(
                       label: 'Category',
+                      required: true,
                       valueLabel: categoryLabel,
                       onTap: () async {
                         final picked = await showOptionPicker(
@@ -283,6 +284,7 @@ class _ItemsScreenState extends State<ItemsScreen> {
                     const SizedBox(height: 8),
                     PickerField(
                       label: 'Sub category',
+                      required: true,
                       valueLabel: subCategoryLabel,
                       enabled: (categoryId ?? '').isNotEmpty,
                       onTap: () async {
@@ -302,6 +304,7 @@ class _ItemsScreenState extends State<ItemsScreen> {
                     const SizedBox(height: 8),
                     PickerField(
                       label: 'UOM',
+                      required: true,
                       valueLabel: uomLabel,
                       onTap: () async {
                         final picked = await showOptionPicker(
@@ -320,6 +323,7 @@ class _ItemsScreenState extends State<ItemsScreen> {
                     const SizedBox(height: 8),
                     PickerField(
                       label: 'GST',
+                      required: true,
                       valueLabel: gstLabel,
                       onTap: () async {
                         final picked = await showOptionPicker(
@@ -359,17 +363,26 @@ class _ItemsScreenState extends State<ItemsScreen> {
                           );
                           return;
                         }
+                        if ((categoryId ?? '').isEmpty ||
+                            (subCategoryId ?? '').isEmpty ||
+                            (uomId ?? '').isEmpty ||
+                            (gstId ?? '').isEmpty) {
+                          showPmsSnack(
+                            context,
+                            'Category, sub category, UOM and GST are required',
+                            error: true,
+                          );
+                          return;
+                        }
                         final payload = <String, dynamic>{
                           'item_name': nameCtrl.text.trim(),
                           'HSNcode': hsnCtrl.text.trim(),
                           'specification': specCtrl.text.trim(),
                           'brands': brandIds,
-                          if ((categoryId ?? '').isNotEmpty)
-                            'category': categoryId,
-                          if ((subCategoryId ?? '').isNotEmpty)
-                            'sub_category': subCategoryId,
-                          if ((uomId ?? '').isNotEmpty) 'uom': uomId,
-                          if ((gstId ?? '').isNotEmpty) 'gst': gstId,
+                          'category': categoryId,
+                          'sub_category': subCategoryId,
+                          'uom': uomId,
+                          'gst': gstId,
                         };
                         try {
                           final api = context.read<SettingsApis>().items;

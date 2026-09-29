@@ -94,18 +94,17 @@ class _TasksListScreenState extends State<TasksListScreen> {
       final params = <String, dynamic>{
         'page': _page,
         'limit': 20,
-        'search': _search,
         'status': listStatus,
         'project': _projectId,
         'sortBy': 'updatedAt',
         'sortOrder': 'desc',
+        if (!_mine) 'search': _search,
       };
 
       final results = await Future.wait([
         _mine ? api.tasks.myTasks(params) : api.tasks.list(params),
         api.tasks.statusCounts({
           'project': _projectId,
-          if (_mine) 'mine': true,
         }).catchError((_) => <String, dynamic>{}),
       ]);
       if (!mounted) return;

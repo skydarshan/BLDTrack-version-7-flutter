@@ -74,11 +74,11 @@ class _DmrStatusScreenState extends State<DmrStatusScreen> {
             padding: AppTheme.chipRowPadding,
             child: Row(
               children: [
-                for (final s in ['', 'pending', 'partial', 'closed'])
+                for (final s in ['', 'pending', 'partial', 'completed', 'hold'])
                   Padding(
                     padding: const EdgeInsets.only(right: 8),
                     child: ChoiceChip(
-                      label: Text(s.isEmpty ? 'All' : s),
+                      label: Text(s.isEmpty ? 'All' : s == 'completed' ? 'Closed' : s),
                       selected: _status == s,
                       onSelected: (_) {
                         setState(() => _status = s);
@@ -167,11 +167,16 @@ class _DmrOrderDetailScreenState extends State<DmrOrderDetailScreen> {
 
   Future<void> _close() async {
     try {
-      await context.read<AppServices>().dmr.closeOrder(widget.id, {'notes': ''});
-      showPmsSnack(context, 'Close requested');
+      await context.read<AppServices>().dmr.closeOrder(widget.id, {
+        'status': 'completed',
+        'closing_category': '',
+        'closing_remark': '',
+      });
+      if (!mounted) return;
+      showPmsSnack(context, 'Order closed');
       _load();
     } on ApiException catch (e) {
-      showPmsSnack(context, e.message, error: true);
+      if (mounted) showPmsSnack(context, e.message, error: true);
     }
   }
 
@@ -224,9 +229,11 @@ class _DmrCreateScreenState extends State<DmrCreateScreen> {
   String _vendorLabel = '';
   String? _roId;
   String _roLabel = '';
+  String _roNumber = '';
   List<Map<String, dynamic>> _sites = [];
   List<Map<String, dynamic>> _vendors = [];
   List<Map<String, dynamic>> _open = [];
+  List<Map<String, dynamic>> _poItems = [];
   final _challan = TextEditingController();
   final _dmrNo = TextEditingController();
   bool _saving = false;
@@ -264,26 +271,48 @@ class _DmrCreateScreenState extends State<DmrCreateScreen> {
   }
 
   Future<void> _save() async {
-    if (_siteId == null || _challan.text.trim().isEmpty || _dmrNo.text.trim().isEmpty) {
-      showPmsSnack(context, 'Site, DMR no and challan number are required', error: true);
+    if (_siteId == null ||
+        _vendorId == null ||
+        _challan.text.trim().isEmpty ||
+        _dmrNo.text.trim().isEmpty) {
+      showPmsSnack(context, 'Site, vendor, DMR no and challan number are required', error: true);
       return;
     }
+    final dmrItems = _poItems.isEmpty
+        ? [
+            {
+              'item_name': 'Item',
+              'received_qty': 1,
+              'accepted_qty': 1,
+            },
+          ]
+        : _poItems
+            .map((line) {
+              final itemId = mongoId(line['item_id'] ?? line['item']);
+              final qty = asNum(line['po_qty'] ?? line['qty'] ?? line['quantity']) ?? 1;
+              return {
+                if (itemId != null) 'item_id': itemId,
+                'item_name': labelOf(line['item_id'] ?? line['item'] ?? line['item_name']),
+                'po_qty': qty,
+                'received_qty': qty,
+                'accepted_qty': qty,
+                'rate': asNum(line['rate']) ?? 0,
+                'gst': asNum(line['gst']) ?? 0,
+                'remark': line['remark'] ?? '',
+              };
+            })
+            .toList();
     setState(() => _saving = true);
     try {
       await context.read<AppServices>().dmr.createChallan({
         'site': _siteId,
         'vendor_id': _vendorId,
         'ro_id': _roId,
+        if (_roNumber.isNotEmpty) 'ro_number': _roNumber,
         'dmr_no': _dmrNo.text.trim(),
         'challan_number': _challan.text.trim(),
         'pr_type': 'Site Establishment',
-        'dmr_items': [
-          {
-            'item_name': 'Item',
-            'received_qty': 1,
-            'accepted_qty': 1,
-          }
-        ],
+        'dmr_items': dmrItems,
       });
       if (!mounted) return;
       showPmsSnack(context, 'Challan created');
@@ -324,6 +353,7 @@ class _DmrCreateScreenState extends State<DmrCreateScreen> {
           const SizedBox(height: 12),
           PickerField(
             label: 'Vendor',
+            required: true,
             valueLabel: _vendorLabel,
             onTap: () async {
               final p = await showOptionPicker(
@@ -345,6 +375,14 @@ class _DmrCreateScreenState extends State<DmrCreateScreen> {
             label: 'Open PO',
             valueLabel: _roLabel,
             onTap: () async {
+              if (_siteId == null || _vendorId == null) {
+                showPmsSnack(context, 'Select site and vendor first', error: true);
+                return;
+              }
+              if (_open.isEmpty) {
+                showPmsSnack(context, 'No open POs for this site and vendor');
+                return;
+              }
               final p = await showOptionPicker(
                 context,
                 title: 'Open PO',
@@ -352,11 +390,39 @@ class _DmrCreateScreenState extends State<DmrCreateScreen> {
                 selected: _roId,
               );
               if (p == null) return;
+              Map<String, dynamic>? row;
+              for (final r in _open) {
+                if (idOf(r) == p.value) {
+                  row = r;
+                  break;
+                }
+              }
+              var items = asMapList(row?['items'] is List ? row!['items'] : const []);
+              var roNumber = row?['ro_number']?.toString() ??
+                  row?['po_number']?.toString() ??
+                  p.label;
+              try {
+                final doc = await context.read<AppServices>().dmr.getOrder(p.value);
+                if (doc['items'] is List) {
+                  items = asMapList(doc['items'] as List);
+                }
+                roNumber = doc['ro_number']?.toString() ??
+                    doc['po_number']?.toString() ??
+                    roNumber;
+              } catch (_) {}
+              if (!mounted) return;
               setState(() {
                 _roId = p.value;
                 _roLabel = p.label;
+                _roNumber = roNumber;
+                _poItems = items;
               });
             },
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'Pick site + vendor to load matching open POs',
+            style: TextStyle(color: Colors.grey, fontSize: 12),
           ),
           const SizedBox(height: 12),
           TextField(controller: _dmrNo, decoration: const InputDecoration(labelText: 'DMR no *')),

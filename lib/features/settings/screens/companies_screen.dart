@@ -174,11 +174,25 @@ class _CompaniesScreenState extends State<CompaniesScreen> {
                       );
                       return;
                     }
+                    if (codeCtrl.text.trim().isEmpty || panCtrl.text.trim().isEmpty) {
+                      showPmsSnack(
+                        context,
+                        'Company code and PAN are required',
+                        error: true,
+                      );
+                      return;
+                    }
+                    final phone = int.tryParse(phoneCtrl.text.replaceAll(RegExp(r'\D'), ''));
+                    if (phone == null) {
+                      showPmsSnack(context, 'Phone number is required', error: true);
+                      return;
+                    }
                     final payload = {
                       'companyName': nameCtrl.text.trim(),
                       'code': codeCtrl.text.trim(),
                       'contact_person': contactCtrl.text.trim(),
-                      'phone_number': phoneCtrl.text.trim(),
+                      'dialcode': 91,
+                      'phone_number': phone,
                       'gst_number': gstCtrl.text.trim(),
                       'pan_number': panCtrl.text.trim(),
                       'address': address,

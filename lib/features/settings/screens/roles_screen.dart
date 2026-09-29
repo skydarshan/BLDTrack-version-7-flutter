@@ -452,17 +452,28 @@ class _RolesScreenState extends State<RolesScreen> {
                           );
                           return;
                         }
-                        final payload = <String, dynamic>{
-                          'name': nameCtrl.text.trim(),
-                          'description': descCtrl.text.trim(),
-                          'modulePermissions': _mergeMatrixForSave(matrix, existing),
-                        };
+                        final name = nameCtrl.text.trim();
+                        final description = descCtrl.text.trim();
+                        final permissions = _mergeMatrixForSave(matrix, existing);
                         try {
                           final api = context.read<SettingsApis>().roles;
                           if (isEdit) {
-                            await api.update(idOf(row)!, payload);
+                            await api.update(idOf(row)!, {
+                              'name': name,
+                              'description': description,
+                              'modulePermissions': permissions,
+                            });
                           } else {
-                            await api.create(payload);
+                            final created = await api.create({
+                              'name': name,
+                              'description': description,
+                            });
+                            final createdId = idOf(created);
+                            if (createdId != null && permissions.isNotEmpty) {
+                              await api.update(createdId, {
+                                'modulePermissions': permissions,
+                              });
+                            }
                           }
                           if (ctx.mounted) Navigator.pop(ctx, true);
                         } on ApiException catch (e) {

@@ -133,7 +133,7 @@ class _SitesScreenState extends State<SitesScreen> {
                 const SizedBox(height: 8),
                 TextFormField(
                   controller: codeCtrl,
-                  decoration: const InputDecoration(labelText: 'Code'),
+                  decoration: const InputDecoration(labelText: 'Code *'),
                 ),
                 AddressFields(
                   values: address,
@@ -145,6 +145,14 @@ class _SitesScreenState extends State<SitesScreen> {
                       showPmsSnack(
                         context,
                         'Site name is required',
+                        error: true,
+                      );
+                      return;
+                    }
+                    if (codeCtrl.text.trim().isEmpty) {
+                      showPmsSnack(
+                        context,
+                        'Site code is required',
                         error: true,
                       );
                       return;

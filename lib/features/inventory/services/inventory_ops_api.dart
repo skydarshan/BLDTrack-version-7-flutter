@@ -110,6 +110,14 @@ class InventoryOpsApi {
     return unwrapDataMap(res.data);
   }
 
+  Future<Map<String, dynamic>> updateTransferStatus(String id, String status) async {
+    final res = await _client.patch<Map<String, dynamic>>(
+      '/inter-site-transfers/$id/status',
+      data: {'status': status},
+    );
+    return unwrapDataMap(res.data);
+  }
+
   Future<Map<String, dynamic>> dispatchTransfer(String id, Map<String, dynamic> data) async {
     final res = await _client.patch<Map<String, dynamic>>(
       '/inter-site-transfers/$id/dispatch',

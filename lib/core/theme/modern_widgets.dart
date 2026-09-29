@@ -452,6 +452,10 @@ class _RenderFillCardHeight extends RenderShiftedBox {
 
     final boundedWidth = constraints.hasBoundedWidth;
     final boundedHeight = constraints.hasBoundedHeight;
+    if (boundedWidth && constraints.maxWidth <= 0) {
+      size = constraints.constrain(Size.zero);
+      return;
+    }
     child.layout(
       BoxConstraints(
         minWidth: boundedWidth ? constraints.maxWidth : 0,

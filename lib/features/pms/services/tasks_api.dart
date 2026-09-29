@@ -138,8 +138,10 @@ class TasksApi {
       '/tasks/$id/progress',
       queryParameters: {'page': page, 'limit': limit},
     );
+    final data = unwrapDataMap(res.data);
+    final entries = data['entries'];
     return PaginatedResult(
-      items: _asMaps(unwrapDataList(res.data)),
+      items: _asMaps(entries is List ? entries : unwrapDataList(res.data)),
       pagination: unwrapPagination(res.data),
     );
   }

@@ -56,21 +56,22 @@ class _ProcurementHomeScreenState extends State<ProcurementHomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final remaining = _overview['remainingInventory'] is Map
-        ? Map<String, dynamic>.from(_overview['remainingInventory'] as Map)
-        : <String, dynamic>{};
-    final sites = _overview['activeSites'] is Map
-        ? Map<String, dynamic>.from(_overview['activeSites'] as Map)
-        : <String, dynamic>{};
-    final pending = _overview['itemsYetToBeReceived'] is Map
-        ? Map<String, dynamic>.from(_overview['itemsYetToBeReceived'] as Map)
-        : <String, dynamic>{};
-    final prs = _overview['totalPurchaseRequests'] is Map
-        ? Map<String, dynamic>.from(_overview['totalPurchaseRequests'] as Map)
-        : <String, dynamic>{};
+    final remaining = firstMap(_overview, ['remaining_inventory', 'remainingInventory']);
+    final sites = firstMap(_overview, ['active_sites', 'activeSites']);
+    final pending = firstMap(_overview, [
+      'items_yet_to_receive',
+      'itemsYetToReceive',
+      'itemsYetToBeReceived',
+    ]);
+    final prs = firstMap(_overview, ['total_purchase_requests', 'totalPurchaseRequests']);
 
-    final pendingPrs = prs['pendingCount'] ?? prs['pending_count'] ?? 0;
-    final pendingLines = pending['pendingLineItems'] ?? pending['pending_count'] ?? pending['count'];
+    final pendingPrs = firstNonNull(prs, ['pending_count', 'pendingCount']) ?? 0;
+    final pendingLines = firstNonNull(pending, [
+      'line_items_count',
+      'pendingLineItems',
+      'pending_count',
+      'count',
+    ]);
 
     return Scaffold(
       extendBody: true,
@@ -310,7 +311,7 @@ class _RenderProcurementHomeBalance extends RenderBox
     final width = constraints.hasBoundedWidth ? constraints.maxWidth : 0.0;
     final target = constraints.minHeight.isFinite ? constraints.minHeight : 0.0;
     final banner = firstChild;
-    if (banner == null) {
+    if (banner == null || width <= 0) {
       size = constraints.constrain(Size(width, target));
       return;
     }
@@ -515,7 +516,7 @@ class _RrListScreenState extends State<RrListScreen> {
             padding: AppTheme.chipRowPadding,
             child: Row(
               children: [
-                for (final t in ['all', 'pending', 'revise', 'approved', 'revised', 'rejected'])
+                for (final t in ['all', 'draft', 'pending', 'revise', 'approved', 'revised', 'rejected'])
                   Padding(
                     padding: const EdgeInsets.only(right: 8),
                     child: ChoiceChip(
@@ -693,24 +694,25 @@ class _RrDetailScreenState extends State<RrDetailScreen> {
                         ),
                       ),
                     const SizedBox(height: 16),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        FilledButton(
-                          onPressed: () => _setStatus('approved'),
-                          child: const Text('Approve'),
-                        ),
-                        OutlinedButton(
-                          onPressed: () => _setStatus('revise'),
-                          child: const Text('Revise'),
-                        ),
-                        OutlinedButton(
-                          onPressed: () => _setStatus('rejected'),
-                          child: const Text('Reject'),
-                        ),
-                      ],
-                    ),
+                    if (['pending', 'revised'].contains(doc?['status']?.toString()))
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          FilledButton(
+                            onPressed: () => _setStatus('approved'),
+                            child: const Text('Approve'),
+                          ),
+                          OutlinedButton(
+                            onPressed: () => _setStatus('revise'),
+                            child: const Text('Revise'),
+                          ),
+                          OutlinedButton(
+                            onPressed: () => _setStatus('rejected'),
+                            child: const Text('Reject'),
+                          ),
+                        ],
+                      ),
                   ],
                 ),
     );
@@ -731,11 +733,14 @@ class _RrCreateScreenState extends State<RrCreateScreen> {
   String? _siteId;
   String _siteLabel = '';
   String _localPurchase = 'no';
+  String? _vendorId;
+  String _vendorLabel = '';
   DateTime _date = DateTime.now();
   DateTime _expected = DateTime.now().add(const Duration(days: 7));
   dynamic _nextNumber;
   bool _saving = false;
   List<Map<String, dynamic>> _sites = [];
+  List<Map<String, dynamic>> _vendors = [];
   List<Map<String, dynamic>> _catalogItems = [];
   final List<_RrLine> _lines = [_RrLine()];
 
@@ -756,10 +761,12 @@ class _RrCreateScreenState extends State<RrCreateScreen> {
     final settings = context.read<SettingsApis>();
     final sites = await settings.sites.list({'limit': 100, 'sortBy': 'site_name'});
     final items = await settings.items.list({'limit': 100, 'sortBy': 'item_name'});
+    final vendors = await settings.vendors.list({'limit': 100, 'sortBy': 'vendor_name'});
     if (!mounted) return;
     setState(() {
       _sites = sites.items;
       _catalogItems = items.items;
+      _vendors = vendors.items;
     });
   }
 
@@ -779,12 +786,21 @@ class _RrCreateScreenState extends State<RrCreateScreen> {
       final n = await context.read<AppServices>().rr.getNextNumber(picked.value);
       if (!mounted) return;
       setState(() => _nextNumber = n);
-    } catch (_) {}
+    } on ApiException catch (e) {
+      if (mounted) {
+        setState(() => _nextNumber = null);
+        showPmsSnack(context, e.message, error: true);
+      }
+    }
   }
 
   Future<void> _save() async {
     if (_title.text.trim().isEmpty || _siteId == null) {
       showPmsSnack(context, 'Title and site are required', error: true);
+      return;
+    }
+    if (_nextNumber == null) {
+      showPmsSnack(context, 'PR number is missing — pick the site again', error: true);
       return;
     }
     final items = _lines
@@ -799,6 +815,14 @@ class _RrCreateScreenState extends State<RrCreateScreen> {
           },
         )
         .toList();
+    if (items.isEmpty) {
+      showPmsSnack(context, 'Add at least one line item', error: true);
+      return;
+    }
+    if (_localPurchase == 'yes' && (_vendorId == null || _vendorId!.isEmpty)) {
+      showPmsSnack(context, 'Vendor is required for local purchase', error: true);
+      return;
+    }
     setState(() => _saving = true);
     try {
       await context.read<AppServices>().rr.create({
@@ -811,8 +835,21 @@ class _RrCreateScreenState extends State<RrCreateScreen> {
             : int.tryParse('$_nextNumber') ?? _nextNumber,
         'site': _siteId,
         'local_purchase': _localPurchase,
+        'status': 'pending',
+        'new_request': true,
         'remarks': _remarks.text.trim(),
         'items': items,
+        if (_localPurchase == 'yes') 'vendor': _vendorId,
+        if (_localPurchase == 'yes')
+          'vendors_total': [
+            {
+              'vendor_id': _vendorId,
+              'subtotal': 0,
+              'total_tax': 0,
+              'total_amount': 0,
+              'preferred': true,
+            },
+          ],
       });
       if (!mounted) return;
       showPmsSnack(context, 'Requisition created');
@@ -893,6 +930,30 @@ class _RrCreateScreenState extends State<RrCreateScreen> {
             ],
             onChanged: (v) => setState(() => _localPurchase = v ?? 'no'),
           ),
+          if (_localPurchase == 'yes') ...[
+            const SizedBox(height: 12),
+            PickerField(
+              label: 'Vendor',
+              required: true,
+              valueLabel: _vendorLabel,
+              onTap: () async {
+                final picked = await showOptionPicker(
+                  context,
+                  title: 'Vendor',
+                  options: mapToOptions(
+                    _vendors,
+                    labelOfRow: (r) => r['vendor_name']?.toString() ?? labelOf(r),
+                  ),
+                  selected: _vendorId,
+                );
+                if (picked == null) return;
+                setState(() {
+                  _vendorId = picked.value;
+                  _vendorLabel = picked.label;
+                });
+              },
+            ),
+          ],
           const SizedBox(height: 12),
           TextField(
             controller: _remarks,

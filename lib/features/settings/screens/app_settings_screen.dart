@@ -19,6 +19,8 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
   final _providerCtrl = TextEditingController(text: 'gmail');
   final _userCtrl = TextEditingController();
   final _passwordCtrl = TextEditingController();
+  final _hostCtrl = TextEditingController();
+  final _portCtrl = TextEditingController();
 
   bool _loading = true;
   bool _busy = false;
@@ -41,6 +43,8 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
     _providerCtrl.dispose();
     _userCtrl.dispose();
     _passwordCtrl.dispose();
+    _hostCtrl.dispose();
+    _portCtrl.dispose();
     super.dispose();
   }
 
@@ -63,6 +67,8 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
       _userCtrl.text = cfg?['smtpUser']?.toString() ??
           cfg?['senderEmail']?.toString() ??
           '';
+      _hostCtrl.text = cfg?['smtpHost']?.toString() ?? '';
+      _portCtrl.text = cfg?['smtpPort']?.toString() ?? '';
       _passwordCtrl.clear();
       setState(() {
         _loading = false;
@@ -107,16 +113,27 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
     }
   }
 
-  Future<void> _save() async {
+  Map<String, dynamic>? _smtpPayload() {
     final provider = _providerCtrl.text.trim();
     final user = _userCtrl.text.trim();
     if (provider.isEmpty) {
       showPmsSnack(context, 'SMTP provider is required', error: true);
-      return;
+      return null;
     }
     if (user.isEmpty) {
       showPmsSnack(context, 'SMTP user is required', error: true);
-      return;
+      return null;
+    }
+    if (provider == 'custom') {
+      if (_hostCtrl.text.trim().length < 3) {
+        showPmsSnack(context, 'SMTP host is required for custom provider', error: true);
+        return null;
+      }
+      final port = int.tryParse(_portCtrl.text.trim());
+      if (port == null || port < 1 || port > 65535) {
+        showPmsSnack(context, 'SMTP port must be between 1 and 65535', error: true);
+        return null;
+      }
     }
     final payload = <String, dynamic>{
       'smtpProvider': provider,
@@ -124,8 +141,18 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
       'senderEmail': user,
       'recipientEmail': user,
     };
+    if (provider == 'custom') {
+      payload['smtpHost'] = _hostCtrl.text.trim();
+      payload['smtpPort'] = int.parse(_portCtrl.text.trim());
+    }
     final pwd = _passwordCtrl.text;
     if (pwd.trim().isNotEmpty) payload['smtpPassword'] = pwd;
+    return payload;
+  }
+
+  Future<void> _save() async {
+    final payload = _smtpPayload();
+    if (payload == null) return;
     await _run(
       () async {
         await context.read<SettingsApis>().updateNotificationEmail(payload);
@@ -203,6 +230,21 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
                                 });
                               },
                       ),
+                      if (_providerCtrl.text.trim() == 'custom') ...[
+                        const SizedBox(height: 8),
+                        TextFormField(
+                          controller: _hostCtrl,
+                          enabled: !_busy,
+                          decoration: const InputDecoration(labelText: 'SMTP host *'),
+                        ),
+                        const SizedBox(height: 8),
+                        TextFormField(
+                          controller: _portCtrl,
+                          enabled: !_busy,
+                          keyboardType: TextInputType.number,
+                          decoration: const InputDecoration(labelText: 'SMTP port *'),
+                        ),
+                      ],
                       const SizedBox(height: 8),
                       TextFormField(
                         controller: _userCtrl,
@@ -230,12 +272,16 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
                       OutlinedButton(
                         onPressed: _busy
                             ? null
-                            : () => _run(
+                            : () {
+                                final payload = _smtpPayload();
+                                if (payload == null) return;
+                                _run(
                                   () => context
                                       .read<SettingsApis>()
-                                      .verifyNotificationEmail(),
+                                      .verifyNotificationEmail(payload),
                                   'Verification started',
-                                ),
+                                );
+                              },
                         child: const Text('Verify'),
                       ),
                       const SizedBox(height: 8),

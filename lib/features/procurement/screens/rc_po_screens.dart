@@ -123,12 +123,42 @@ class _RcDetailScreenState extends State<RcDetailScreen> {
   }
 
   Future<void> _status(String status) async {
+    final doc = _doc;
+    if (doc == null) return;
+    final payload = rcStatusPayload(doc, status);
+    final items = payload['items'];
+    final vendors = payload['vendors_total'];
+    if (items is! List || items.isEmpty) {
+      showPmsSnack(context, 'Cannot update status — line items are missing', error: true);
+      return;
+    }
+    if (vendors is! List || vendors.isEmpty) {
+      showPmsSnack(context, 'Cannot update status — vendor totals are missing', error: true);
+      return;
+    }
+    if (status == 'approved') {
+      final missingQuote = asMapList(vendors).any((v) {
+        final quote = v['vendor_quotation']?.toString() ?? '';
+        return !(quote.startsWith('https://') ||
+            quote.startsWith('http://') ||
+            quote.startsWith('s3://'));
+      });
+      if (missingQuote) {
+        showPmsSnack(
+          context,
+          'Cannot approve — each vendor needs a quotation file URL. Upload quotations on web, then approve.',
+          error: true,
+        );
+        return;
+      }
+    }
     try {
-      await context.read<AppServices>().rc.updateStatus(widget.id, {'status': status});
+      await context.read<AppServices>().rc.updateStatus(widget.id, payload);
+      if (!mounted) return;
       showPmsSnack(context, 'Updated');
       _load();
     } on ApiException catch (e) {
-      showPmsSnack(context, e.message, error: true);
+      if (mounted) showPmsSnack(context, e.message, error: true);
     }
   }
 
@@ -330,7 +360,7 @@ class _PoListScreenState extends State<PoListScreen> {
             padding: AppTheme.chipRowPadding,
             child: Row(
               children: [
-                for (final s in ['', 'pending', 'approved', 'rejected', 'revised'])
+                for (final s in ['', 'pending', 'approval_pending', 'approved', 'rejected', 'revised'])
                   Padding(
                     padding: const EdgeInsets.only(right: 8),
                     child: ChoiceChip(
@@ -363,8 +393,9 @@ class _PoListScreenState extends State<PoListScreen> {
                                 return Card(
                                   child: ListTile(
                                     title: Text(
-                                      row['purchase_order_number']?.toString() ??
+                                      row['po_number']?.toString() ??
                                           row['ro_number']?.toString() ??
+                                          row['purchase_order_number']?.toString() ??
                                           'PO',
                                     ),
                                     subtitle: Text(labelOf(row['vendor'] ?? row['site'])),
@@ -455,7 +486,7 @@ class _PoDetailScreenState extends State<PoDetailScreen> {
                   children: [
                     StatusChip(status: doc?['status']?.toString()),
                     const SizedBox(height: 8),
-                    Text('PO: ${doc?['purchase_order_number'] ?? doc?['ro_number'] ?? '—'}'),
+                    Text('PO: ${doc?['po_number'] ?? doc?['ro_number'] ?? doc?['purchase_order_number'] ?? '—'}'),
                     Text('Vendor: ${labelOf(doc?['vendor'])}'),
                     Text('Site: ${labelOf(doc?['site'])}'),
                     const SizedBox(height: 16),

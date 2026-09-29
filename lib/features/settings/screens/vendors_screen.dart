@@ -194,6 +194,7 @@ class _VendorsScreenState extends State<VendorsScreen> {
                     final payload = {
                       'vendor_name': nameCtrl.text.trim(),
                       'contact_person': contactCtrl.text.trim(),
+                      'dialcode': 91,
                       'phone_number': _splitCsv(phoneCtrl.text),
                       'email': _splitCsv(emailCtrl.text),
                       'gst_number': gstCtrl.text.trim(),

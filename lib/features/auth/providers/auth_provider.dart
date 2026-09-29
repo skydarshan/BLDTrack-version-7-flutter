@@ -79,6 +79,16 @@ class AuthProvider extends ChangeNotifier {
     });
   }
 
+  Future<Map<String, dynamic>> checkRegistration({
+    String? organizationName,
+    String? adminEmail,
+  }) {
+    return _authApi.checkRegistration(
+      organizationName: organizationName,
+      adminEmail: adminEmail,
+    );
+  }
+
   /// Reloads `/auth/me` so role permissions stay in sync after org module changes.
   Future<void> refreshMe() async {
     if (!isAuthenticated) return;

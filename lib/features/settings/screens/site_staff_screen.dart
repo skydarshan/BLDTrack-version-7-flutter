@@ -154,7 +154,7 @@ class _SiteStaffScreenState extends State<SiteStaffScreen> {
                     TextFormField(
                       controller: codeCtrl,
                       decoration:
-                          const InputDecoration(labelText: 'Employee code'),
+                          const InputDecoration(labelText: 'Employee code *'),
                     ),
                     const SizedBox(height: 8),
                     TextFormField(
@@ -184,6 +184,10 @@ class _SiteStaffScreenState extends State<SiteStaffScreen> {
                       onPressed: () async {
                         if (nameCtrl.text.trim().isEmpty) {
                           showPmsSnack(context, 'Name is required', error: true);
+                          return;
+                        }
+                        if (codeCtrl.text.trim().isEmpty) {
+                          showPmsSnack(context, 'Employee code is required', error: true);
                           return;
                         }
                         if (roleCtrl.text.trim().isEmpty) {

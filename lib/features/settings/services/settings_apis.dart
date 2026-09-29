@@ -143,10 +143,10 @@ class SettingsApis {
     return unwrapDataMap(res.data);
   }
 
-  Future<void> verifyNotificationEmail() =>
+  Future<void> verifyNotificationEmail(Map<String, dynamic> data) =>
       _client.post<Map<String, dynamic>>(
         '/organizations/current/notification-email/verify',
-        data: const {},
+        data: data,
       );
 
   Future<void> testNotificationEmail() =>

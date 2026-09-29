@@ -110,8 +110,6 @@ class _ContractorsScreenState extends State<ContractorsScreen> {
     final nameCtrl = TextEditingController(text: row?['name']?.toString() ?? '');
     final contactCtrl =
         TextEditingController(text: row?['contact_person']?.toString() ?? '');
-    final natureCtrl =
-        TextEditingController(text: row?['nature_of_work']?.toString() ?? '');
     final phoneCtrl =
         TextEditingController(text: row?['phone']?.toString() ?? '');
     final emailCtrl =
@@ -120,6 +118,9 @@ class _ContractorsScreenState extends State<ContractorsScreen> {
         TextEditingController(text: row?['location']?.toString() ?? '');
     var type = row?['type']?.toString() ?? 'Contractor';
     if (!_types.contains(type)) type = 'Contractor';
+    const natures = ['With Material', 'Without Material', 'Labour Supplier'];
+    var nature = row?['nature_of_work']?.toString() ?? 'With Material';
+    if (!natures.contains(nature)) nature = 'With Material';
     var siteIds = idsFromRefs(row?['sites']);
     List<OptionItem> siteOptions = const [];
     var optionsLoaded = false;
@@ -173,10 +174,14 @@ class _ContractorsScreenState extends State<ContractorsScreen> {
                       onChanged: (v) => setLocal(() => type = v ?? type),
                     ),
                     const SizedBox(height: 8),
-                    TextFormField(
-                      controller: natureCtrl,
-                      decoration:
-                          const InputDecoration(labelText: 'Nature of work'),
+                    DropdownButtonFormField<String>(
+                      initialValue: nature,
+                      decoration: const InputDecoration(labelText: 'Nature of work *'),
+                      items: [
+                        for (final n in natures)
+                          DropdownMenuItem(value: n, child: Text(n)),
+                      ],
+                      onChanged: (v) => setLocal(() => nature = v ?? nature),
                     ),
                     const SizedBox(height: 8),
                     TextFormField(
@@ -208,6 +213,10 @@ class _ContractorsScreenState extends State<ContractorsScreen> {
                           showPmsSnack(context, 'Name is required', error: true);
                           return;
                         }
+                        if (contactCtrl.text.trim().isEmpty) {
+                          showPmsSnack(context, 'Contact person is required', error: true);
+                          return;
+                        }
                         if (phoneCtrl.text.trim().isEmpty) {
                           showPmsSnack(context, 'Phone is required', error: true);
                           return;
@@ -216,7 +225,7 @@ class _ContractorsScreenState extends State<ContractorsScreen> {
                           'name': nameCtrl.text.trim(),
                           'contact_person': contactCtrl.text.trim(),
                           'type': type,
-                          'nature_of_work': natureCtrl.text.trim(),
+                          'nature_of_work': nature,
                           'phone': phoneCtrl.text.trim(),
                           'email': emailCtrl.text.trim(),
                           'location': locationCtrl.text.trim(),
@@ -249,7 +258,6 @@ class _ContractorsScreenState extends State<ContractorsScreen> {
 
     nameCtrl.dispose();
     contactCtrl.dispose();
-    natureCtrl.dispose();
     phoneCtrl.dispose();
     emailCtrl.dispose();
     locationCtrl.dispose();
