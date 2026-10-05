@@ -289,8 +289,11 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
         );
       }
       if (!mounted) return;
-      showPmsSnack(context, widget.isEdit ? 'Task updated' : 'Task created');
-      context.pop(true);
+      await showSavedConfirmation(
+        context,
+        widget.isEdit ? 'Task updated' : 'Task created',
+      );
+      if (mounted) context.pop(true);
     } on ApiException catch (e) {
       if (!mounted) return;
       _fieldErrors.merge(apiFieldErrors(e));

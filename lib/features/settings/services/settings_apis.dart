@@ -23,6 +23,24 @@ class MasterResourceApi {
     );
   }
 
+  /// Loads every page so pickers show the full master list, including newly added rows.
+  Future<List<Map<String, dynamic>>> listAll([Map<String, dynamic>? params]) async {
+    final all = <Map<String, dynamic>>[];
+    var page = 1;
+    while (page <= 50) {
+      final res = await list({
+        ...?params,
+        'page': page,
+        'limit': 100,
+      });
+      all.addAll(res.items);
+      final totalPages = (res.pagination?['totalPages'] as num?)?.toInt() ?? 1;
+      if (page >= totalPages || res.items.isEmpty) break;
+      page += 1;
+    }
+    return all;
+  }
+
   Future<Map<String, dynamic>> getById(String id) async {
     final res = await _client.get<Map<String, dynamic>>('$resourcePath/$id');
     return unwrapDataMap(res.data);

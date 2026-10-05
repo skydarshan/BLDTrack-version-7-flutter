@@ -216,10 +216,51 @@ List<dynamic> unwrapDataList(Map<String, dynamic>? root) {
   final data = root['data'];
   if (data is List) return data;
   if (data is Map) {
-    for (final key in ['notifications', 'items', 'entries', 'tree', 'roots', 'data']) {
+    const keys = [
+      'dmrPurchaseOrders',
+      'dmrRequisitionOrders',
+      'dmrEntries',
+      'imperestDmrEntries',
+      'requisitionOrders',
+      'rateComparatives',
+      'notifications',
+      'items',
+      'entries',
+      'tree',
+      'roots',
+      'data',
+      'sites',
+      'categories',
+      'subCategories',
+      'vendors',
+      'users',
+      'companies',
+      'brands',
+      'uoms',
+      'gsts',
+      'locations',
+      'contractors',
+      'activities',
+      'subActivities',
+      'siteStaff',
+      'roles',
+      'projects',
+      'requisitionRequests',
+      'transfers',
+    ];
+    List<dynamic>? emptyMatch;
+    for (final key in keys) {
       final nested = data[key];
-      if (nested is List) return nested;
+      if (nested is! List) continue;
+      if (nested.isNotEmpty) return nested;
+      emptyMatch ??= nested;
     }
+    for (final value in data.values) {
+      if (value is List && value.isNotEmpty && value.first is Map) {
+        return value;
+      }
+    }
+    if (emptyMatch != null) return emptyMatch;
   }
   return const [];
 }
@@ -289,8 +330,13 @@ String formatLineQtyUom(Map<String, dynamic>? line) {
 
 Map<String, dynamic>? unwrapPagination(Map<String, dynamic>? root) {
   if (root == null) return null;
-  final pagination = root['pagination'];
-  if (pagination is Map<String, dynamic>) return pagination;
+  final top = root['pagination'];
+  if (top is Map) return Map<String, dynamic>.from(top);
+  final data = root['data'];
+  if (data is Map) {
+    final nested = data['pagination'];
+    if (nested is Map) return Map<String, dynamic>.from(nested);
+  }
   return null;
 }
 
@@ -304,21 +350,132 @@ String? idOf(dynamic value) {
   return value.toString();
 }
 
+bool looksLikeObjectId(String? value) {
+  if (value == null || value.length != 24) return false;
+  return RegExp(r'^[a-fA-F0-9]{24}$').hasMatch(value);
+}
+
+String? _readableName(dynamic value) {
+  if (value == null) return null;
+  final text = value.toString().trim();
+  if (text.isEmpty || looksLikeObjectId(text)) return null;
+  return text;
+}
+
 String labelOf(dynamic value, {String fallback = '—'}) {
   if (value == null) return fallback;
-  if (value is String) return value.isEmpty ? fallback : value;
+  if (value is String) return _readableName(value) ?? fallback;
   if (value is Map) {
-    final name = value['name'] ??
-        value['site_name'] ??
-        value['project_name'] ??
-        value['title'] ??
-        value['email'];
-    if (name != null && name.toString().trim().isNotEmpty) {
-      return name.toString();
+    const keys = [
+      'item_name',
+      'vendor_name',
+      'site_name',
+      'project_name',
+      'company_name',
+      'companyName',
+      'brand_name',
+      'uom_name',
+      'gst_name',
+      'category_name',
+      'subcategory_name',
+      'location_name',
+      'activity_name',
+      'sub_activity_name',
+      'contractor_name',
+      'employee_name',
+      'full_name',
+      'fullName',
+      'name',
+      'title',
+      'email',
+    ];
+    for (final key in keys) {
+      final name = _readableName(value[key]);
+      if (name != null) return name;
     }
-    return idOf(value) ?? fallback;
+    for (final nested in [
+      value['item_id'],
+      value['item'],
+      value['vendor'],
+      value['site'],
+      value['category'],
+      value['sub_category'],
+      value['uom'],
+      value['gst'],
+      value['role'],
+      value['location'],
+    ]) {
+      if (nested is Map) {
+        final name = labelOf(nested, fallback: '');
+        if (name.isNotEmpty) return name;
+      }
+    }
+    return fallback;
   }
-  return value.toString();
+  return _readableName(value.toString()) ?? fallback;
+}
+
+/// Display name for a procurement / inventory line item.
+String itemLabel(dynamic line, {String fallback = '—'}) {
+  if (line == null) return fallback;
+  if (line is String) return _readableName(line) ?? fallback;
+  if (line is! Map) return labelOf(line, fallback: fallback);
+  final map = Map<String, dynamic>.from(line);
+  return labelOf(
+    firstNonNull(map, ['item_name', 'itemName', 'item_id', 'item', 'name']),
+    fallback: fallback,
+  );
+}
+
+List<Map<String, dynamic>> lineItemsOf(Map<String, dynamic>? doc) {
+  if (doc == null) return const [];
+  final raw = doc['items'];
+  if (raw is! List) return const [];
+  final items = asMapList(raw);
+  doc['items'] = items;
+  return items;
+}
+
+String itemQtySubtitle(Map<String, dynamic> line) {
+  final qty = firstNonNull(line, [
+    'qty',
+    'issued_Qty',
+    'issued_qty',
+    'quantity',
+    'requested_quantity',
+    'received_quantity',
+    'scrap_qty',
+  ]);
+  final rate = firstNonNull(line, ['rate', 'unit_rate']);
+  final gst = firstNonNull(line, ['gst']);
+  return [
+    if (qty != null) 'Qty $qty',
+    if (rate != null) 'Rate $rate',
+    if (gst != null) 'GST $gst',
+  ].join(' · ');
+}
+
+Future<void> attachCatalogItemNames(
+  List<Map<String, dynamic>> lines,
+  Future<Map<String, dynamic>> Function(String id) fetchById,
+) async {
+  for (final line in lines) {
+    if (itemLabel(line, fallback: '').isNotEmpty) continue;
+    final id = mongoId(line['item_id'] ?? line['item']);
+    if (id == null) continue;
+    try {
+      final catalog = await fetchById(id);
+      final name = _readableName(catalog['item_name']);
+      if (name != null) line['item_name'] = name;
+    } catch (_) {}
+  }
+}
+
+Future<void> resolveDocItemNames(
+  Map<String, dynamic> doc,
+  Future<Map<String, dynamic>> Function(String id) fetchById,
+) async {
+  await attachCatalogItemNames(lineItemsOf(doc), fetchById);
 }
 
 String formatDate(dynamic value) {

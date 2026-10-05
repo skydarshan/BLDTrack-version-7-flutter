@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/api_helpers.dart';
+import '../../../core/utils/form_validation_helpers.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../pms/widgets/pickers.dart';
@@ -84,13 +85,12 @@ class _SiteStaffScreenState extends State<SiteStaffScreen> {
   }
 
   Future<List<OptionItem>> _loadSites() async {
-    final res = await context.read<SettingsApis>().sites.list({
-      'limit': 200,
+    final rows = await context.read<SettingsApis>().sites.listAll({
       'sortBy': 'site_name',
       'sortOrder': 'asc',
     });
     return mapToOptions(
-      res.items,
+      rows,
       labelOfRow: (r) => r['site_name']?.toString() ?? labelOf(r),
     );
   }
@@ -118,6 +118,7 @@ class _SiteStaffScreenState extends State<SiteStaffScreen> {
     List<OptionItem> siteOptions = const [];
     var optionsLoaded = false;
 
+    final fieldErrors = FieldErrors();
     final saved = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
@@ -148,24 +149,26 @@ class _SiteStaffScreenState extends State<SiteStaffScreen> {
                     const SizedBox(height: 12),
                     TextFormField(
                       controller: nameCtrl,
-                      decoration: const InputDecoration(labelText: 'Name *'),
+                      decoration: InputDecoration(labelText: 'Name *', errorText: fieldErrors['name']),
                     ),
                     const SizedBox(height: 8),
                     TextFormField(
                       controller: codeCtrl,
-                      decoration:
-                          const InputDecoration(labelText: 'Employee code *'),
+                      decoration: InputDecoration(
+                        labelText: 'Employee code *',
+                        errorText: fieldErrors['code'],
+                      ),
                     ),
                     const SizedBox(height: 8),
                     TextFormField(
                       controller: roleCtrl,
-                      decoration: const InputDecoration(labelText: 'Role *'),
+                      decoration: InputDecoration(labelText: 'Role *', errorText: fieldErrors['role']),
                     ),
                     const SizedBox(height: 8),
                     TextFormField(
                       controller: phoneCtrl,
                       keyboardType: TextInputType.phone,
-                      decoration: const InputDecoration(labelText: 'Phone *'),
+                      decoration: InputDecoration(labelText: 'Phone *', errorText: fieldErrors['phone']),
                     ),
                     const SizedBox(height: 8),
                     TextFormField(
@@ -182,20 +185,14 @@ class _SiteStaffScreenState extends State<SiteStaffScreen> {
                     ),
                     FilledButton(
                       onPressed: () async {
-                        if (nameCtrl.text.trim().isEmpty) {
-                          showPmsSnack(context, 'Name is required', error: true);
-                          return;
-                        }
-                        if (codeCtrl.text.trim().isEmpty) {
-                          showPmsSnack(context, 'Employee code is required', error: true);
-                          return;
-                        }
-                        if (roleCtrl.text.trim().isEmpty) {
-                          showPmsSnack(context, 'Role is required', error: true);
-                          return;
-                        }
-                        if (phoneCtrl.text.trim().isEmpty) {
-                          showPmsSnack(context, 'Phone is required', error: true);
+                        fieldErrors.clear();
+                        fieldErrors.set('name', requiredText(nameCtrl.text, 'Name'));
+                        fieldErrors.set('code', requiredText(codeCtrl.text, 'Employee code'));
+                        fieldErrors.set('role', requiredText(roleCtrl.text, 'Role'));
+                        fieldErrors.set('phone', requiredText(phoneCtrl.text, 'Phone'));
+                        if (fieldErrors.hasErrors) {
+                          setLocal(() {});
+                          showPmsSnack(context, fieldErrors.messages.first, error: true);
                           return;
                         }
                         final payload = {
@@ -213,11 +210,21 @@ class _SiteStaffScreenState extends State<SiteStaffScreen> {
                           } else {
                             await api.create(payload);
                           }
+                          if (!context.mounted) return;
+                          await showSavedConfirmation(
+                            context,
+                            isEdit ? 'Site staff updated' : 'Site staff created',
+                          );
                           if (ctx.mounted) Navigator.pop(ctx, true);
                         } on ApiException catch (e) {
-                          if (context.mounted) {
-                            showPmsSnack(context, e.message, error: true);
-                          }
+                          if (!context.mounted) return;
+                          setLocal(() {
+                            for (final entry in apiFieldErrors(e).entries) {
+                              final key = entry.key == 'employeeCode' ? 'code' : entry.key;
+                              fieldErrors.set(key, entry.value);
+                            }
+                          });
+                          showPmsSnack(context, formatApiErrorSummary(e), error: true);
                         }
                       },
                       child: Text(isEdit ? 'Save' : 'Create'),
@@ -347,7 +354,7 @@ class _SiteStaffScreenState extends State<SiteStaffScreen> {
                                 subtitle: Text(
                                   [
                                     row['employeeCode']?.toString() ?? '',
-                                    row['role']?.toString() ?? '',
+                                    labelOf(row['role'], fallback: ''),
                                     row['phone']?.toString() ?? '',
                                   ].where((e) => e.isNotEmpty).join(' · '),
                                 ),

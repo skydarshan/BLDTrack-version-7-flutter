@@ -3,8 +3,8 @@ import 'package:provider/provider.dart';
 
 import '../../../core/network/api_helpers.dart';
 import '../../auth/providers/auth_provider.dart';
+import '../../settings/services/settings_apis.dart';
 import '../../settings/utils/permissions.dart';
-import '../services/pms_services.dart';
 import '../widgets/pickers.dart';
 
 /// Assigned sites from auth profile (GET /auth/me `user.sites`).
@@ -61,7 +61,7 @@ List<Map<String, dynamic>> filterSitesByKeyword(
 
 /// Site dropdown options — mirrors React `loadSiteOptions`.
 /// Non–Super Admin → assigned sites from auth profile only.
-/// Super Admin → GET `/sites`.
+/// Super Admin → every site page from GET `/sites`.
 Future<List<OptionItem>> loadSiteOptions(
   BuildContext context, {
   String? search,
@@ -80,11 +80,12 @@ Future<List<OptionItem>> loadSiteOptions(
   }
 
   try {
-    final rows = await context.read<PmsServices>().masters.listSites(
-          search: search,
-          limit: limit,
-        );
-    return mapSiteRowsToOptions(rows);
+    final rows = await context.read<SettingsApis>().sites.listAll({
+      'sortBy': 'site_name',
+      'sortOrder': 'asc',
+      if (search != null && search.isNotEmpty) 'search': search,
+    });
+    return mapSiteRowsToOptions(filterSitesByKeyword(rows, search ?? ''));
   } catch (_) {
     return mapSiteRowsToOptions(
       sitesFromAuthProfile(user?.sites ?? const []),

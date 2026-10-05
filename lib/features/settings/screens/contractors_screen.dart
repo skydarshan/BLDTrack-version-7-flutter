@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/api_helpers.dart';
+import '../../../core/utils/form_validation_helpers.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../pms/widgets/pickers.dart';
@@ -85,13 +86,12 @@ class _ContractorsScreenState extends State<ContractorsScreen> {
   }
 
   Future<List<OptionItem>> _loadSites() async {
-    final res = await context.read<SettingsApis>().sites.list({
-      'limit': 200,
+    final rows = await context.read<SettingsApis>().sites.listAll({
       'sortBy': 'site_name',
       'sortOrder': 'asc',
     });
     return mapToOptions(
-      res.items,
+      rows,
       labelOfRow: (r) => r['site_name']?.toString() ?? labelOf(r),
     );
   }
@@ -125,6 +125,7 @@ class _ContractorsScreenState extends State<ContractorsScreen> {
     List<OptionItem> siteOptions = const [];
     var optionsLoaded = false;
 
+    final fieldErrors = FieldErrors();
     final saved = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
@@ -155,13 +156,18 @@ class _ContractorsScreenState extends State<ContractorsScreen> {
                     const SizedBox(height: 12),
                     TextFormField(
                       controller: nameCtrl,
-                      decoration: const InputDecoration(labelText: 'Name *'),
+                      decoration: InputDecoration(
+                        labelText: 'Name *',
+                        errorText: fieldErrors['name'],
+                      ),
                     ),
                     const SizedBox(height: 8),
                     TextFormField(
                       controller: contactCtrl,
-                      decoration:
-                          const InputDecoration(labelText: 'Contact person'),
+                      decoration: InputDecoration(
+                        labelText: 'Contact person *',
+                        errorText: fieldErrors['contact'],
+                      ),
                     ),
                     const SizedBox(height: 8),
                     DropdownButtonFormField<String>(
@@ -187,7 +193,10 @@ class _ContractorsScreenState extends State<ContractorsScreen> {
                     TextFormField(
                       controller: phoneCtrl,
                       keyboardType: TextInputType.phone,
-                      decoration: const InputDecoration(labelText: 'Phone *'),
+                      decoration: InputDecoration(
+                        labelText: 'Phone *',
+                        errorText: fieldErrors['phone'],
+                      ),
                     ),
                     const SizedBox(height: 8),
                     TextFormField(
@@ -209,16 +218,13 @@ class _ContractorsScreenState extends State<ContractorsScreen> {
                     ),
                     FilledButton(
                       onPressed: () async {
-                        if (nameCtrl.text.trim().isEmpty) {
-                          showPmsSnack(context, 'Name is required', error: true);
-                          return;
-                        }
-                        if (contactCtrl.text.trim().isEmpty) {
-                          showPmsSnack(context, 'Contact person is required', error: true);
-                          return;
-                        }
-                        if (phoneCtrl.text.trim().isEmpty) {
-                          showPmsSnack(context, 'Phone is required', error: true);
+                        fieldErrors.clear();
+                        fieldErrors.set('name', requiredText(nameCtrl.text, 'Name'));
+                        fieldErrors.set('contact', requiredText(contactCtrl.text, 'Contact person'));
+                        fieldErrors.set('phone', requiredText(phoneCtrl.text, 'Phone'));
+                        if (fieldErrors.hasErrors) {
+                          setLocal(() {});
+                          showPmsSnack(context, fieldErrors.messages.first, error: true);
                           return;
                         }
                         final payload = {
@@ -238,11 +244,20 @@ class _ContractorsScreenState extends State<ContractorsScreen> {
                           } else {
                             await api.create(payload);
                           }
+                          if (!context.mounted) return;
+                          await showSavedConfirmation(
+                            context,
+                            isEdit ? 'Contractor updated' : 'Contractor created',
+                          );
                           if (ctx.mounted) Navigator.pop(ctx, true);
                         } on ApiException catch (e) {
-                          if (context.mounted) {
-                            showPmsSnack(context, e.message, error: true);
-                          }
+                          if (!context.mounted) return;
+                          setLocal(() {
+                            for (final entry in apiFieldErrors(e).entries) {
+                              fieldErrors.set(entry.key, entry.value);
+                            }
+                          });
+                          showPmsSnack(context, formatApiErrorSummary(e), error: true);
                         }
                       },
                       child: Text(isEdit ? 'Save' : 'Create'),

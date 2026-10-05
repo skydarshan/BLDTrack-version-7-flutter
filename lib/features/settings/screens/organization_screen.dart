@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../../core/network/api_exception.dart';
+import '../../../core/utils/form_validation_helpers.dart';
 import '../../../core/org/org_modules.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../auth/providers/auth_provider.dart';
@@ -29,6 +30,7 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
   bool _loading = true;
   bool _saving = false;
   String? _error;
+  final _fieldErrors = FieldErrors();
   Map<String, dynamic> _modules = buildDefaultModules();
   Map<String, dynamic> _savedModules = buildDefaultModules();
   Map<String, dynamic>? _org;
@@ -116,8 +118,7 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
       final org = await apis.getOrganization();
       List<Map<String, dynamic>> roles = [];
       try {
-        final rolePage = await apis.roles.list({'limit': 200});
-        roles = rolePage.items;
+        roles = await apis.roles.listAll();
       } catch (_) {
         // Roles are optional for viewing; needed for approval dropdowns.
       }
@@ -185,15 +186,12 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
       showPmsSnack(context, 'No update permission', error: true);
       return;
     }
+    _fieldErrors.clear();
     if (!modulesOnly) {
-      if (_nameCtrl.text.trim().isEmpty) {
-        showPmsSnack(context, 'Name is required', error: true);
-        return;
-      }
+      _fieldErrors.set('name', requiredText(_nameCtrl.text, 'Name'));
     }
     if (_canEditModules && !anyModuleEnabled(_modules)) {
-      showPmsSnack(context, 'Select at least one product module', error: true);
-      return;
+      _fieldErrors.set('modules', 'Select at least one product module');
     }
 
     final modules = _canEditModules
@@ -205,23 +203,19 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
         (modules['project_management'] as Map)['enabled'] == true;
 
     if (procurementOn) {
-      final rr = _validateApproval('RR approval', _rrSteps, _rrStep1, _rrStep2);
-      if (rr != null) {
-        showPmsSnack(context, rr, error: true);
-        return;
-      }
-      final rate = _validateApproval('Rate approval', _rateSteps, _rateStep1, _rateStep2);
-      if (rate != null) {
-        showPmsSnack(context, rate, error: true);
-        return;
-      }
+      _fieldErrors.set('rr', _validateApproval('RR approval', _rrSteps, _rrStep1, _rrStep2));
+      _fieldErrors.set('rate', _validateApproval('Rate approval', _rateSteps, _rateStep1, _rateStep2));
     }
     if (pmOn) {
-      final task = _validateApproval('Task progress approval', _taskSteps, _taskStep1, _taskStep2);
-      if (task != null) {
-        showPmsSnack(context, task, error: true);
-        return;
-      }
+      _fieldErrors.set(
+        'task',
+        _validateApproval('Task progress approval', _taskSteps, _taskStep1, _taskStep2),
+      );
+    }
+    if (_fieldErrors.hasErrors) {
+      setState(() {});
+      showPmsSnack(context, _fieldErrors.messages.first, error: true);
+      return;
     }
 
     setState(() => _saving = true);
@@ -267,13 +261,16 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
       await auth.refreshMe();
       if (!mounted) return;
 
-      showPmsSnack(
+      await showSavedConfirmation(
         context,
         modulesOnly ? 'Module access updated' : 'Organization updated',
       );
-      await _load();
+      if (mounted) await _load();
     } on ApiException catch (e) {
-      if (mounted) showPmsSnack(context, e.message, error: true);
+      if (!mounted) return;
+      _fieldErrors.merge(apiFieldErrors(e));
+      setState(() {});
+      showPmsSnack(context, formatApiErrorSummary(e), error: true);
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -315,10 +312,15 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
                   if (_org == null && _error == null)
                     const EmptyState(message: 'No organization found')
                   else ...[
+                    if (_fieldErrors.hasErrors)
+                      ValidationSummaryBanner(messages: _fieldErrors.messages),
                     TextFormField(
                       controller: _nameCtrl,
                       enabled: canUpdate,
-                      decoration: const InputDecoration(labelText: 'Name *'),
+                      decoration: InputDecoration(
+                        labelText: 'Name *',
+                        errorText: _fieldErrors['name'],
+                      ),
                     ),
                     const SizedBox(height: 12),
                     TextFormField(

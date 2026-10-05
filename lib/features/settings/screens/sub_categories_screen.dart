@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/api_helpers.dart';
+import '../../../core/utils/form_validation_helpers.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../pms/widgets/pickers.dart';
@@ -86,13 +87,12 @@ class _SubCategoriesScreenState extends State<SubCategoriesScreen> {
   }
 
   Future<List<OptionItem>> _loadCategories() async {
-    final res = await context.read<SettingsApis>().categories.list({
-      'limit': 200,
+    final rows = await context.read<SettingsApis>().categories.listAll({
       'sortBy': 'name',
       'sortOrder': 'asc',
     });
     return mapToOptions(
-      res.items,
+      rows,
       labelOfRow: (r) => r['name']?.toString() ?? labelOf(r),
     );
   }
@@ -121,6 +121,7 @@ class _SubCategoriesScreenState extends State<SubCategoriesScreen> {
     List<OptionItem> categoryOptions = const [];
     var optionsLoaded = false;
 
+    final fieldErrors = FieldErrors();
     final saved = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
@@ -158,15 +159,17 @@ class _SubCategoriesScreenState extends State<SubCategoriesScreen> {
                     const SizedBox(height: 12),
                     TextFormField(
                       controller: nameCtrl,
-                      decoration: const InputDecoration(
+                      decoration: InputDecoration(
                         labelText: 'Subcategory name *',
+                        errorText: fieldErrors['name'],
                       ),
                     ),
                     const SizedBox(height: 8),
                     TextFormField(
                       controller: codeCtrl,
-                      decoration: const InputDecoration(
+                      decoration: InputDecoration(
                         labelText: 'Subcategory code *',
+                        errorText: fieldErrors['code'],
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -174,12 +177,17 @@ class _SubCategoriesScreenState extends State<SubCategoriesScreen> {
                       label: 'Category',
                       required: true,
                       valueLabel: categoryLabel,
+                      errorText: fieldErrors['category'],
                       onTap: () async {
+                        final options = await _loadCategories();
+                        if (!ctx.mounted) return;
+                        setLocal(() => categoryOptions = options);
                         final picked = await showOptionPicker(
                           context,
                           title: 'Select category',
-                          options: categoryOptions,
+                          options: options,
                           selected: categoryId,
+                          emptyMessage: 'No categories found',
                         );
                         if (picked == null) return;
                         setLocal(() {
@@ -191,28 +199,13 @@ class _SubCategoriesScreenState extends State<SubCategoriesScreen> {
                     const SizedBox(height: 12),
                     FilledButton(
                       onPressed: () async {
-                        if (nameCtrl.text.trim().isEmpty) {
-                          showPmsSnack(
-                            context,
-                            'Subcategory name is required',
-                            error: true,
-                          );
-                          return;
-                        }
-                        if (codeCtrl.text.trim().isEmpty) {
-                          showPmsSnack(
-                            context,
-                            'Subcategory code is required',
-                            error: true,
-                          );
-                          return;
-                        }
-                        if (categoryId == null || categoryId!.isEmpty) {
-                          showPmsSnack(
-                            context,
-                            'Category is required',
-                            error: true,
-                          );
+                        fieldErrors.clear();
+                        fieldErrors.set('name', requiredText(nameCtrl.text, 'Subcategory name'));
+                        fieldErrors.set('code', requiredText(codeCtrl.text, 'Subcategory code'));
+                        fieldErrors.set('category', requiredSelection(categoryId, 'Category'));
+                        if (fieldErrors.hasErrors) {
+                          setLocal(() {});
+                          showPmsSnack(context, fieldErrors.messages.first, error: true);
                           return;
                         }
                         final payload = {
@@ -228,11 +221,20 @@ class _SubCategoriesScreenState extends State<SubCategoriesScreen> {
                           } else {
                             await api.create(payload);
                           }
+                          if (!context.mounted) return;
+                          await showSavedConfirmation(
+                            context,
+                            isEdit ? 'Sub category updated' : 'Sub category created',
+                          );
                           if (ctx.mounted) Navigator.pop(ctx, true);
                         } on ApiException catch (e) {
-                          if (context.mounted) {
-                            showPmsSnack(context, e.message, error: true);
-                          }
+                          if (!context.mounted) return;
+                          setLocal(() {
+                            for (final entry in apiFieldErrors(e).entries) {
+                              fieldErrors.set(entry.key, entry.value);
+                            }
+                          });
+                          showPmsSnack(context, formatApiErrorSummary(e), error: true);
                         }
                       },
                       child: Text(isEdit ? 'Save' : 'Create'),
@@ -353,9 +355,7 @@ class _SubCategoriesScreenState extends State<SubCategoriesScreen> {
                               );
                             }
                             final row = _items[i];
-                            final cat = row['category'] is Map
-                                ? row['category']['name']?.toString()
-                                : null;
+                            final cat = labelOf(row['category'], fallback: '');
                             return Card(
                               child: ListTile(
                                 title: Text(
@@ -365,7 +365,7 @@ class _SubCategoriesScreenState extends State<SubCategoriesScreen> {
                                 subtitle: Text(
                                   [
                                     row['subcategory_code']?.toString() ?? '',
-                                    if (cat != null && cat.isNotEmpty) cat,
+                                    if (cat.isNotEmpty) cat,
                                   ].where((e) => e.isNotEmpty).join(' · '),
                                 ),
                                 trailing: PopupMenuButton<String>(

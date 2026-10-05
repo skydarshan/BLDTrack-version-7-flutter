@@ -25,6 +25,11 @@ class FieldErrors {
   String get summary => messages.join('\n');
 }
 
+String? requiredText(String value, String label) {
+  if (value.trim().isEmpty) return '$label is required';
+  return null;
+}
+
 String? requiredSelection(String? id, String label) {
   if (id == null || id.trim().isEmpty) return '$label is required';
   return null;

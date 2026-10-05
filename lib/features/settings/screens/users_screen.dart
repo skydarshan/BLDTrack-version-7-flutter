@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/api_helpers.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/utils/form_validation_helpers.dart';
 import '../../../core/utils/form_validators.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../pms/widgets/pickers.dart';
@@ -89,14 +90,13 @@ class _UsersScreenState extends State<UsersScreen> {
   }
 
   Future<List<OptionItem>> _loadRoles() async {
-    final res = await context.read<SettingsApis>().roles.list({
-      'limit': 200,
+    final rows = await context.read<SettingsApis>().roles.listAll({
       'sortBy': 'name',
       'sortOrder': 'asc',
     });
     final isSa = _perms.isSuperAdmin;
     return mapToOptions(
-      res.items.where((r) {
+      rows.where((r) {
         final name = (r['name']?.toString() ?? '').trim().toLowerCase();
         if (name == 'super admin' && !isSa) return false;
         return true;
@@ -106,13 +106,12 @@ class _UsersScreenState extends State<UsersScreen> {
   }
 
   Future<List<OptionItem>> _loadSites() async {
-    final res = await context.read<SettingsApis>().sites.list({
-      'limit': 200,
+    final rows = await context.read<SettingsApis>().sites.listAll({
       'sortBy': 'site_name',
       'sortOrder': 'asc',
     });
     return mapToOptions(
-      res.items,
+      rows,
       labelOfRow: (r) => r['site_name']?.toString() ?? labelOf(r),
     );
   }
@@ -141,6 +140,7 @@ class _UsersScreenState extends State<UsersScreen> {
     List<OptionItem> roleOptions = const [];
     List<OptionItem> siteOptions = const [];
     var optionsLoaded = false;
+    final fieldErrors = FieldErrors();
 
     final saved = await showModalBottomSheet<bool>(
       context: context,
@@ -179,28 +179,36 @@ class _UsersScreenState extends State<UsersScreen> {
                     const SizedBox(height: 12),
                     TextFormField(
                       controller: nameCtrl,
-                      decoration: const InputDecoration(labelText: 'Name *'),
+                      decoration: InputDecoration(
+                        labelText: 'Name *',
+                        errorText: fieldErrors['name'],
+                      ),
                     ),
                     const SizedBox(height: 8),
                     TextFormField(
                       controller: phoneCtrl,
                       keyboardType: TextInputType.phone,
-                      decoration: const InputDecoration(labelText: 'Phone *'),
+                      decoration: InputDecoration(
+                        labelText: 'Phone *',
+                        errorText: fieldErrors['phone'],
+                      ),
                     ),
                     const SizedBox(height: 8),
                     TextFormField(
                       controller: emailCtrl,
                       keyboardType: TextInputType.emailAddress,
-                      decoration: const InputDecoration(labelText: 'Email *'),
+                      decoration: InputDecoration(
+                        labelText: 'Email *',
+                        errorText: fieldErrors['email'],
+                      ),
                     ),
                     const SizedBox(height: 8),
                     TextFormField(
                       controller: passwordCtrl,
                       obscureText: true,
                       decoration: InputDecoration(
-                        labelText: isEdit
-                            ? 'Password (optional)'
-                            : 'Password *',
+                        labelText: isEdit ? 'Password (optional)' : 'Password *',
+                        errorText: fieldErrors['password'],
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -208,6 +216,7 @@ class _UsersScreenState extends State<UsersScreen> {
                       label: 'Role',
                       required: true,
                       valueLabel: roleLabel,
+                      errorText: fieldErrors['role'],
                       onTap: () async {
                         final picked = await showOptionPicker(
                           context,
@@ -231,33 +240,19 @@ class _UsersScreenState extends State<UsersScreen> {
                     ),
                     FilledButton(
                       onPressed: () async {
-                        if (nameCtrl.text.trim().isEmpty) {
-                          showPmsSnack(context, 'Name is required', error: true);
-                          return;
-                        }
-                        if (phoneCtrl.text.trim().isEmpty) {
-                          showPmsSnack(context, 'Phone is required', error: true);
-                          return;
-                        }
-                        if (emailCtrl.text.trim().isEmpty) {
-                          showPmsSnack(context, 'Email is required', error: true);
-                          return;
-                        }
+                        fieldErrors.clear();
+                        fieldErrors.set('name', requiredText(nameCtrl.text, 'Name'));
+                        fieldErrors.set('phone', requiredText(phoneCtrl.text, 'Phone'));
+                        fieldErrors.set('email', requiredText(emailCtrl.text, 'Email'));
                         if (!isEdit) {
-                          final pwdErr = FormValidators.strongPassword(passwordCtrl.text);
-                          if (pwdErr != null) {
-                            showPmsSnack(context, pwdErr, error: true);
-                            return;
-                          }
+                          fieldErrors.set('password', FormValidators.strongPassword(passwordCtrl.text));
                         } else if (passwordCtrl.text.trim().isNotEmpty) {
-                          final pwdErr = FormValidators.strongPassword(passwordCtrl.text);
-                          if (pwdErr != null) {
-                            showPmsSnack(context, pwdErr, error: true);
-                            return;
-                          }
+                          fieldErrors.set('password', FormValidators.strongPassword(passwordCtrl.text));
                         }
-                        if (roleId == null || roleId!.isEmpty) {
-                          showPmsSnack(context, 'Role is required', error: true);
+                        fieldErrors.set('role', requiredSelection(roleId, 'Role'));
+                        if (fieldErrors.hasErrors) {
+                          setLocal(() {});
+                          showPmsSnack(context, fieldErrors.messages.first, error: true);
                           return;
                         }
                         final payload = <String, dynamic>{
@@ -280,11 +275,20 @@ class _UsersScreenState extends State<UsersScreen> {
                           } else {
                             await api.create(payload);
                           }
+                          if (!context.mounted) return;
+                          await showSavedConfirmation(
+                            context,
+                            isEdit ? 'User updated' : 'User created',
+                          );
                           if (ctx.mounted) Navigator.pop(ctx, true);
                         } on ApiException catch (e) {
-                          if (context.mounted) {
-                            showPmsSnack(context, e.message, error: true);
-                          }
+                          if (!context.mounted) return;
+                          setLocal(() {
+                            for (final entry in apiFieldErrors(e).entries) {
+                              fieldErrors.set(entry.key, entry.value);
+                            }
+                          });
+                          showPmsSnack(context, formatApiErrorSummary(e), error: true);
                         }
                       },
                       child: Text(isEdit ? 'Save' : 'Create'),
@@ -412,9 +416,10 @@ class _UsersScreenState extends State<UsersScreen> {
                               );
                             }
                             final row = _items[i];
-                            final roleName = row['role'] is Map
-                                ? row['role']['name']?.toString()
-                                : row['roleName']?.toString();
+                            final roleName = labelOf(
+                              row['role'] ?? row['roleName'],
+                              fallback: '',
+                            );
                             final isSelf =
                                 idOf(row) != null && idOf(row) == _selfId;
                             return Card(

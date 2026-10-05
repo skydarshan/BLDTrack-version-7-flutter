@@ -114,6 +114,14 @@ GoRouter createAppRouter(
             path: '/dmr/status/:id',
             builder: (_, state) => DmrOrderDetailScreen(id: state.pathParameters['id']!),
           ),
+          GoRoute(
+            path: '/dmr/entries/:id',
+            builder: (_, state) => DmrEntryDetailScreen(id: state.pathParameters['id']!),
+          ),
+          GoRoute(
+            path: '/dmr/imprest/:id',
+            builder: (_, state) => DmrImprestDetailScreen(id: state.pathParameters['id']!),
+          ),
 
           GoRoute(path: '/inventory', builder: (_, _) => const InventoryHomeScreen()),
           GoRoute(path: '/inventory/imr', builder: (_, _) => const ImrListScreen()),

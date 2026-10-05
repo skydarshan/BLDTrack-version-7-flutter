@@ -5,12 +5,16 @@ import 'package:flutter/rendering.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
+import '../../../core/network/api_client.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/api_helpers.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/utils/form_validation_helpers.dart';
+import '../../../core/utils/list_query.dart';
 import '../../../core/theme/modern_widgets.dart';
 import '../../app/app_services.dart';
 import '../../app/app_shell.dart';
+import '../../pms/widgets/media_widgets.dart';
 import '../../pms/widgets/pickers.dart';
 import '../../pms/widgets/pms_widgets.dart';
 import '../../settings/services/settings_apis.dart';
@@ -454,7 +458,7 @@ class _RrListScreenState extends State<RrListScreen> {
       final params = {
         'page': _page,
         'limit': 20,
-        if (_search.isNotEmpty) 'search': _search,
+        ...rrSearchQuery(_search),
         if (_tab != 'all') 'status': _tab,
       };
       final results = await Future.wait([
@@ -473,6 +477,12 @@ class _RrListScreenState extends State<RrListScreen> {
       if (!mounted) return;
       setState(() {
         _error = e.message;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e.toString();
         _loading = false;
       });
     }
@@ -547,7 +557,13 @@ class _RrListScreenState extends State<RrListScreen> {
               child: _loading
                   ? const CenteredScrollLoader()
                   : _items.isEmpty
-                      ? EmptyListBody(message: 'No requisitions')
+                      ? EmptyListBody(
+                          message: listEmptyMessage(
+                            noun: 'requisitions',
+                            search: _search,
+                            filterLabel: _tab == 'all' ? null : _tab,
+                          ),
+                        )
                       : ListView.separated(
                           padding: AppTheme.listPadding,
                           itemCount: _items.length + 1,
@@ -555,29 +571,21 @@ class _RrListScreenState extends State<RrListScreen> {
                           itemBuilder: (context, i) {
                             if (i == _items.length) {
                               final pages = paginationTotalPages(_pagination);
-                              return Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  TextButton(
-                                    onPressed: _page > 1
-                                        ? () {
-                                            setState(() => _page -= 1);
-                                            _load();
-                                          }
-                                        : null,
-                                    child: const Text('Prev'),
-                                  ),
-                                  Text('$_page / $pages'),
-                                  TextButton(
-                                    onPressed: _page < pages
-                                        ? () {
-                                            setState(() => _page += 1);
-                                            _load();
-                                          }
-                                        : null,
-                                    child: const Text('Next'),
-                                  ),
-                                ],
+                              return ListPaginationRow(
+                                page: _page,
+                                totalPages: pages,
+                                onPrev: _page > 1
+                                    ? () {
+                                        setState(() => _page -= 1);
+                                        _load();
+                                      }
+                                    : null,
+                                onNext: _page < pages
+                                    ? () {
+                                        setState(() => _page += 1);
+                                        _load();
+                                      }
+                                    : null,
                               );
                             }
                             final row = _items[i];
@@ -626,7 +634,10 @@ class _RrDetailScreenState extends State<RrDetailScreen> {
       _error = null;
     });
     try {
-      final doc = await context.read<AppServices>().rr.getDetail(widget.id);
+      final services = context.read<AppServices>();
+      final doc = await services.rr.getDetail(widget.id);
+      if (!mounted) return;
+      await resolveDocItemNames(doc, services.settings.items.getById);
       if (!mounted) return;
       setState(() {
         _doc = doc;
@@ -684,15 +695,16 @@ class _RrDetailScreenState extends State<RrDetailScreen> {
                     if ((doc?['remarks'] ?? '').toString().isNotEmpty)
                       Text('Remarks: ${doc?['remarks']}'),
                     const Divider(height: 32),
-                    const Text('Items', style: TextStyle(fontWeight: FontWeight.w700)),
-                    for (final item in items)
-                      ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        title: Text(labelOf(item['item_id'] ?? item['item'])),
-                        subtitle: Text(
-                          'Qty ${item['qty'] ?? 0} · Rate ${item['rate'] ?? 0} · GST ${item['gst'] ?? 0}',
+                    NamedItemLines(items: items),
+                    for (final line in items)
+                      for (final url in attachmentUrlsOf(line['attachment'] ?? line['attachments']))
+                        ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: const Icon(Icons.attach_file),
+                          title: Text(attachmentName(url), maxLines: 1, overflow: TextOverflow.ellipsis),
+                          subtitle: Text(itemLabel(line)),
+                          onTap: () => openAttachment(context, url),
                         ),
-                      ),
                     const SizedBox(height: 16),
                     if (['pending', 'revised'].contains(doc?['status']?.toString()))
                       Wrap(
@@ -727,22 +739,27 @@ class RrCreateScreen extends StatefulWidget {
 }
 
 class _RrCreateScreenState extends State<RrCreateScreen> {
-  final _title = TextEditingController();
   final _remarks = TextEditingController();
   String _prType = 'Project BOQ';
   String? _siteId;
   String _siteLabel = '';
+  String? _categoryId;
+  String _categoryLabel = '';
   String _localPurchase = 'no';
   String? _vendorId;
   String _vendorLabel = '';
   DateTime _date = DateTime.now();
   DateTime _expected = DateTime.now().add(const Duration(days: 7));
-  dynamic _nextNumber;
+  int? _nextNumber;
   bool _saving = false;
+  String? _saveError;
   List<Map<String, dynamic>> _sites = [];
   List<Map<String, dynamic>> _vendors = [];
+  List<Map<String, dynamic>> _categories = [];
   List<Map<String, dynamic>> _catalogItems = [];
+  List<Map<String, dynamic>> _brands = [];
   final List<_RrLine> _lines = [_RrLine()];
+  final _fieldErrors = FieldErrors();
 
   @override
   void initState() {
@@ -752,30 +769,171 @@ class _RrCreateScreenState extends State<RrCreateScreen> {
 
   @override
   void dispose() {
-    _title.dispose();
     _remarks.dispose();
     super.dispose();
   }
 
   Future<void> _bootstrap() async {
-    final settings = context.read<SettingsApis>();
-    final sites = await settings.sites.list({'limit': 100, 'sortBy': 'site_name'});
-    final items = await settings.items.list({'limit': 100, 'sortBy': 'item_name'});
-    final vendors = await settings.vendors.list({'limit': 100, 'sortBy': 'vendor_name'});
+    await Future.wait([
+      _reloadSites(),
+      _reloadCategories(),
+      _reloadVendors(),
+      _reloadItems(),
+      _reloadBrands(),
+    ]);
+  }
+
+  Future<List<Map<String, dynamic>>> _safeListAll(
+    MasterResourceApi api, {
+    Map<String, dynamic>? params,
+  }) async {
+    try {
+      return await api.listAll(params);
+    } on ApiException catch (e) {
+      if (mounted) showPmsSnack(context, e.message, error: true);
+      return const [];
+    }
+  }
+
+  Future<void> _reloadSites() async {
+    final rows = await _safeListAll(
+      context.read<SettingsApis>().sites,
+      params: const {'sortBy': 'site_name', 'sortOrder': 'asc'},
+    );
     if (!mounted) return;
+    setState(() => _sites = rows);
+  }
+
+  Future<void> _reloadCategories() async {
+    final rows = await _safeListAll(
+      context.read<SettingsApis>().categories,
+      params: const {'sortBy': 'name', 'sortOrder': 'asc'},
+    );
+    if (!mounted) return;
+    setState(() => _categories = rows);
+  }
+
+  Future<void> _reloadBrands() async {
+    final rows = await _safeListAll(
+      context.read<SettingsApis>().brands,
+      params: const {'sortBy': 'brand_name', 'sortOrder': 'asc'},
+    );
+    if (!mounted) return;
+    setState(() => _brands = rows);
+  }
+
+  List<OptionItem> _makeOptions() {
+    return mapToOptions(
+      _brands,
+      labelOfRow: (r) => r['brand_name']?.toString() ?? labelOf(r),
+    );
+  }
+
+  String _makeLabel(List<String> ids) {
+    if (ids.isEmpty) return '';
+    final opts = _makeOptions();
+    final names = <String>[];
+    for (final id in ids) {
+      final match = opts.where((o) => o.value == id);
+      names.add(match.isEmpty ? id : match.first.label);
+    }
+    return names.join(', ');
+  }
+
+  Future<void> _reloadVendors() async {
+    final rows = await _safeListAll(
+      context.read<SettingsApis>().vendors,
+      params: const {'sortBy': 'vendor_name', 'sortOrder': 'asc'},
+    );
+    if (!mounted) return;
+    setState(() => _vendors = rows);
+  }
+
+  Future<void> _reloadItems({String? categoryId}) async {
+    final rows = await _safeListAll(
+      context.read<SettingsApis>().items,
+      params: {
+        'sortBy': 'item_name',
+        'sortOrder': 'asc',
+        if (categoryId != null) 'category': categoryId,
+      },
+    );
+    if (!mounted) return;
+    setState(() => _catalogItems = rows);
+  }
+
+  Future<void> _pickCategory() async {
+    await _reloadCategories();
+    if (!mounted) return;
+    final picked = await showOptionPicker(
+      context,
+      title: 'Request category',
+      options: mapToOptions(_categories, labelOfRow: (r) => r['name']?.toString() ?? labelOf(r)),
+      selected: _categoryId,
+      emptyMessage: 'No categories found',
+    );
+    if (picked == null) return;
     setState(() {
-      _sites = sites.items;
-      _catalogItems = items.items;
-      _vendors = vendors.items;
+      _categoryId = picked.value;
+      _categoryLabel = picked.label;
+      for (final line in _lines) {
+        line.clearItem();
+      }
     });
+    await _reloadItems(categoryId: picked.value);
+  }
+
+  Future<void> _applyItemToLine(int index, OptionItem picked) async {
+    final line = _lines[index];
+    line.itemId = picked.value;
+    line.itemLabel = picked.label;
+    var item = Map<String, dynamic>.from(picked.raw ?? {});
+    try {
+      item = await context.read<SettingsApis>().items.getById(picked.value);
+    } on ApiException {
+      // Use list row if detail fetch fails.
+    }
+    line.itemCode = item['item_code']?.toString() ?? '';
+    line.specification = item['specification']?.toString() ?? '';
+    line.categoryLabel = labelOf(item['category'], fallback: '');
+    line.subCategoryLabel = labelOf(item['sub_category'], fallback: '');
+    line.hsn = (item['HSNcode'] ?? item['HSNCode'])?.toString() ?? '';
+    line.uomId = mongoId(item['uom']);
+    line.uomLabel = labelOf(item['uom'], fallback: '');
+    line.brandIds = [];
+    if (_brands.isEmpty) {
+      await _reloadBrands();
+    }
+    line.brandOptions = _makeOptions();
+    try {
+      final uoms = await context.read<SettingsApis>().getItemUomOptions(picked.value);
+      line.uomOptions = mapToOptions(
+        uoms,
+        labelOfRow: (r) => r['uom_name']?.toString() ?? r['unit']?.toString() ?? labelOf(r),
+      );
+      if (line.uomId != null) {
+        for (final opt in line.uomOptions) {
+          if (opt.value == line.uomId) {
+            line.uomLabel = opt.label;
+            break;
+          }
+        }
+      }
+    } on ApiException {
+      line.uomOptions = const [];
+    }
+    if (mounted) setState(() {});
   }
 
   Future<void> _pickSite() async {
+    await _reloadSites();
+    if (!mounted) return;
     final picked = await showOptionPicker(
       context,
       title: 'Site',
       options: mapToOptions(_sites, labelOfRow: (r) => r['site_name']?.toString() ?? labelOf(r)),
       selected: _siteId,
+      emptyMessage: 'No sites found',
     );
     if (picked == null) return;
     setState(() {
@@ -795,67 +953,101 @@ class _RrCreateScreenState extends State<RrCreateScreen> {
   }
 
   Future<void> _save() async {
-    if (_title.text.trim().isEmpty || _siteId == null) {
-      showPmsSnack(context, 'Title and site are required', error: true);
+    _fieldErrors.clear();
+    _fieldErrors.set('category', requiredSelection(_categoryId, 'Request category'));
+    _fieldErrors.set('site', requiredSelection(_siteId, 'Site'));
+    _fieldErrors.set('pr', _nextNumber == null ? 'PR number is missing — pick the site again' : null);
+    if (_localPurchase == 'yes') {
+      _fieldErrors.set('vendor', requiredSelection(_vendorId, 'Vendor'));
+    }
+    final used = <_RrLine>[];
+    for (var i = 0; i < _lines.length; i++) {
+      final line = _lines[i];
+      if (line.itemId == null) continue;
+      used.add(line);
+      final rawQty = line.qty.text.trim();
+      final qty = num.tryParse(rawQty);
+      if (rawQty.isEmpty || qty == null || qty <= 0) {
+        _fieldErrors.set('line${i}Qty', 'Qty must be greater than 0');
+      }
+      if (line.brandIds.isEmpty) {
+        _fieldErrors.set('line${i}Make', 'Make list is required');
+      }
+    }
+    if (used.isEmpty) {
+      _fieldErrors.set('lines', 'Add at least one line item');
+    }
+    if (_fieldErrors.hasErrors) {
+      setState(() => _saveError = null);
+      showPmsSnack(context, _fieldErrors.messages.first, error: true);
       return;
     }
-    if (_nextNumber == null) {
-      showPmsSnack(context, 'PR number is missing — pick the site again', error: true);
-      return;
-    }
-    final items = _lines
-        .where((l) => l.itemId != null)
+    setState(() => _saveError = null);
+    final items = used
         .map(
           (l) => {
             'item_id': l.itemId,
             'qty': num.tryParse(l.qty.text) ?? 1,
             'rate': num.tryParse(l.rate.text) ?? 0,
             'gst': num.tryParse(l.gst.text) ?? 0,
+            'freight': num.tryParse(l.freight.text) ?? 0,
             'remark': l.remark.text.trim(),
+            'brandName': l.brandIds,
+            if (l.uomId != null) 'uom': l.uomId,
           },
         )
         .toList();
-    if (items.isEmpty) {
-      showPmsSnack(context, 'Add at least one line item', error: true);
-      return;
-    }
-    if (_localPurchase == 'yes' && (_vendorId == null || _vendorId!.isEmpty)) {
-      showPmsSnack(context, 'Vendor is required for local purchase', error: true);
-      return;
+    final files = <MapEntry<String, MultipartFileEntry>>[];
+    for (var i = 0; i < used.length; i++) {
+      for (final file in used[i].attachments) {
+        files.add(MapEntry('item_${i}_attachment', file.toEntry()));
+      }
     }
     setState(() => _saving = true);
     try {
-      await context.read<AppServices>().rr.create({
-        'title': _title.text.trim(),
-        'prType': _prType,
-        'date': _date.toIso8601String(),
-        'expected_delivery_date': _expected.toIso8601String(),
-        'requisition_request_number': _nextNumber is num
-            ? _nextNumber
-            : int.tryParse('$_nextNumber') ?? _nextNumber,
-        'site': _siteId,
-        'local_purchase': _localPurchase,
-        'status': 'pending',
-        'new_request': true,
-        'remarks': _remarks.text.trim(),
-        'items': items,
-        if (_localPurchase == 'yes') 'vendor': _vendorId,
-        if (_localPurchase == 'yes')
-          'vendors_total': [
-            {
-              'vendor_id': _vendorId,
-              'subtotal': 0,
-              'total_tax': 0,
-              'total_amount': 0,
-              'preferred': true,
-            },
-          ],
-      });
+      await context.read<AppServices>().rr.create(
+        {
+          'title': _categoryLabel.trim(),
+          'prType': _prType,
+          'date': _date.toIso8601String(),
+          'expected_delivery_date': _expected.toIso8601String(),
+          'requisition_request_number': _nextNumber,
+          'site': _siteId,
+          'local_purchase': _localPurchase,
+          'status': 'pending',
+          'new_request': true,
+          'remarks': _remarks.text.trim(),
+          'items': items,
+          if (_localPurchase == 'yes') 'vendor': _vendorId,
+          if (_localPurchase == 'yes')
+            'vendors_total': [
+              {
+                'vendor_id': _vendorId,
+                'subtotal': 0,
+                'total_tax': 0,
+                'total_amount': 0,
+                'preferred': true,
+              },
+            ],
+        },
+        files: files,
+      );
       if (!mounted) return;
-      showPmsSnack(context, 'Requisition created');
-      context.pop();
+      await showSavedConfirmation(context, 'Requisition created');
+      if (mounted) context.pop();
     } on ApiException catch (e) {
-      if (mounted) showPmsSnack(context, e.message, error: true);
+      if (!mounted) return;
+      final message = formatApiErrorSummary(e);
+      setState(() {
+        _saveError = message;
+        for (final entry in apiFieldErrors(e).entries) {
+          _fieldErrors.set(entry.key, entry.value);
+        }
+      });
+      showPmsSnack(context, message, error: true);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _saveError = 'Upload failed. Check the connection and tap Retry.');
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -868,11 +1060,9 @@ class _RrCreateScreenState extends State<RrCreateScreen> {
       body: ListView(
         padding: AppTheme.formPadding,
         children: [
-          TextField(
-            controller: _title,
-            decoration: const InputDecoration(labelText: 'Title *'),
-          ),
-          const SizedBox(height: 12),
+          if (_saveError != null)
+            ErrorBanner(message: _saveError!, onRetry: _saving ? null : _save),
+          if (_fieldErrors.hasErrors) ValidationSummaryBanner(messages: _fieldErrors.messages),
           DropdownButtonFormField<String>(
             initialValue: _prType,
             decoration: const InputDecoration(labelText: 'PR type'),
@@ -885,13 +1075,24 @@ class _RrCreateScreenState extends State<RrCreateScreen> {
           ),
           const SizedBox(height: 12),
           PickerField(
+            label: 'Request category',
+            required: true,
+            valueLabel: _categoryLabel,
+            errorText: _fieldErrors['category'],
+            onTap: _pickCategory,
+          ),
+          const SizedBox(height: 12),
+          PickerField(
             label: 'Site',
             required: true,
             valueLabel: _siteLabel,
+            errorText: _fieldErrors['site'],
             onTap: _pickSite,
           ),
-          const SizedBox(height: 8),
-          Text('Next PR number: ${_nextNumber ?? '—'}', style: const TextStyle(color: AppTheme.muted)),
+          const SizedBox(height: 12),
+          _NextPrNumberCard(number: _nextNumber, siteLabel: _siteLabel),
+          if (_fieldErrors['pr'] != null)
+            Text(_fieldErrors['pr']!, style: const TextStyle(color: AppTheme.danger, fontSize: 12)),
           const SizedBox(height: 12),
           ListTile(
             contentPadding: EdgeInsets.zero,
@@ -936,7 +1137,10 @@ class _RrCreateScreenState extends State<RrCreateScreen> {
               label: 'Vendor',
               required: true,
               valueLabel: _vendorLabel,
+              errorText: _fieldErrors['vendor'],
               onTap: () async {
+                await _reloadVendors();
+                if (!mounted) return;
                 final picked = await showOptionPicker(
                   context,
                   title: 'Vendor',
@@ -945,6 +1149,7 @@ class _RrCreateScreenState extends State<RrCreateScreen> {
                     labelOfRow: (r) => r['vendor_name']?.toString() ?? labelOf(r),
                   ),
                   selected: _vendorId,
+                  emptyMessage: 'No vendors found',
                 );
                 if (picked == null) return;
                 setState(() {
@@ -971,6 +1176,11 @@ class _RrCreateScreenState extends State<RrCreateScreen> {
               ),
             ],
           ),
+          if (_fieldErrors['lines'] != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text(_fieldErrors['lines']!, style: const TextStyle(color: AppTheme.danger, fontSize: 12)),
+            ),
           for (var i = 0; i < _lines.length; i++)
             Card(
               child: Padding(
@@ -980,7 +1190,14 @@ class _RrCreateScreenState extends State<RrCreateScreen> {
                     PickerField(
                       label: 'Item',
                       valueLabel: _lines[i].itemLabel,
+                      enabled: _categoryId != null,
                       onTap: () async {
+                        if (_categoryId == null) {
+                          showPmsSnack(context, 'Select request category first', error: true);
+                          return;
+                        }
+                        await _reloadItems(categoryId: _categoryId);
+                        if (!mounted) return;
                         final picked = await showOptionPicker(
                           context,
                           title: 'Item',
@@ -989,14 +1206,62 @@ class _RrCreateScreenState extends State<RrCreateScreen> {
                             labelOfRow: (r) => r['item_name']?.toString() ?? labelOf(r),
                           ),
                           selected: _lines[i].itemId,
+                          emptyMessage: 'Select material category first',
                         );
                         if (picked == null) return;
-                        setState(() {
-                          _lines[i].itemId = picked.value;
-                          _lines[i].itemLabel = picked.label;
-                        });
+                        await _applyItemToLine(i, picked);
                       },
                     ),
+                    if (_lines[i].itemId != null) ...[
+                      const SizedBox(height: 8),
+                      _ReadOnlyField(label: 'Item code', value: _lines[i].itemCode),
+                      _ReadOnlyField(label: 'Specification', value: _lines[i].specification),
+                      _ReadOnlyField(label: 'Category', value: _lines[i].categoryLabel),
+                      _ReadOnlyField(label: 'Sub category', value: _lines[i].subCategoryLabel),
+                      _ReadOnlyField(label: 'HSN code', value: _lines[i].hsn),
+                      PickerField(
+                        label: 'UOM',
+                        valueLabel: _lines[i].uomLabel,
+                        onTap: () async {
+                          final opts = _lines[i].uomOptions;
+                          if (opts.isEmpty) {
+                            showPmsSnack(context, 'No UOM options for this item', error: true);
+                            return;
+                          }
+                          final picked = await showOptionPicker(
+                            context,
+                            title: 'UOM',
+                            options: opts,
+                            selected: _lines[i].uomId,
+                          );
+                          if (picked == null) return;
+                          setState(() {
+                            _lines[i].uomId = picked.value;
+                            _lines[i].uomLabel = picked.label;
+                          });
+                        },
+                      ),
+                      const SizedBox(height: 8),
+                      PickerField(
+                        label: 'Make list',
+                        required: true,
+                        valueLabel: _makeLabel(_lines[i].brandIds),
+                        errorText: _fieldErrors['line${i}Make'],
+                        onTap: () async {
+                          await _reloadBrands();
+                          if (!mounted) return;
+                          final picked = await showMultiOptionPicker(
+                            context,
+                            title: 'Make list',
+                            options: _makeOptions(),
+                            selected: _lines[i].brandIds,
+                            emptyMessage: 'No makes found',
+                          );
+                          if (picked == null) return;
+                          setState(() => _lines[i].brandIds = picked);
+                        },
+                      ),
+                    ],
                     const SizedBox(height: 8),
                     Row(
                       children: [
@@ -1004,7 +1269,10 @@ class _RrCreateScreenState extends State<RrCreateScreen> {
                           child: TextField(
                             controller: _lines[i].qty,
                             keyboardType: TextInputType.number,
-                            decoration: const InputDecoration(labelText: 'Qty'),
+                            decoration: InputDecoration(
+                              labelText: 'Qty *',
+                              errorText: _fieldErrors['line${i}Qty'],
+                            ),
                           ),
                         ),
                         const SizedBox(width: 8),
@@ -1025,6 +1293,22 @@ class _RrCreateScreenState extends State<RrCreateScreen> {
                         ),
                       ],
                     ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: _lines[i].freight,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(labelText: 'Freight'),
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: _lines[i].remark,
+                      decoration: const InputDecoration(labelText: 'Remark'),
+                    ),
+                    const SizedBox(height: 8),
+                    _LineUploadField(
+                      files: _lines[i].attachments,
+                      onChanged: (files) => setState(() => _lines[i].attachments = files),
+                    ),
                   ],
                 ),
               ),
@@ -1040,13 +1324,185 @@ class _RrCreateScreenState extends State<RrCreateScreen> {
   }
 }
 
+class _NextPrNumberCard extends StatelessWidget {
+  const _NextPrNumberCard({required this.number, required this.siteLabel});
+
+  final int? number;
+  final String siteLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    final hasNumber = number != null;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      decoration: BoxDecoration(
+        color: AppTheme.brandLight,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppTheme.brand.withValues(alpha: 0.18)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Icon(Icons.tag_rounded, color: AppTheme.brand),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Next PR number',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.muted,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  hasNumber ? 'PR $number' : 'Select a site to generate',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                    color: hasNumber ? AppTheme.primary : AppTheme.muted,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  hasNumber
+                      ? 'Next requisition request number: $number'
+                      : 'Next requisition request number: —',
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                    color: AppTheme.muted,
+                  ),
+                ),
+                if (siteLabel.isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    siteLabel,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 12, color: AppTheme.muted),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _RrLine {
   String? itemId;
   String itemLabel = '';
+  String itemCode = '';
+  String specification = '';
+  String categoryLabel = '';
+  String subCategoryLabel = '';
+  String hsn = '';
+  String? uomId;
+  String uomLabel = '';
+  List<String> brandIds = [];
+  List<OptionItem> uomOptions = const [];
+  List<OptionItem> brandOptions = const [];
+  List<PendingFile> attachments = [];
   final qty = TextEditingController(text: '1');
   final rate = TextEditingController(text: '0');
   final gst = TextEditingController(text: '0');
+  final freight = TextEditingController(text: '0');
   final remark = TextEditingController();
+
+  void clearItem() {
+    itemId = null;
+    itemLabel = '';
+    itemCode = '';
+    specification = '';
+    categoryLabel = '';
+    subCategoryLabel = '';
+    hsn = '';
+    uomId = null;
+    uomLabel = '';
+    brandIds = [];
+    uomOptions = const [];
+    brandOptions = const [];
+    attachments = [];
+  }
+}
+
+class _LineUploadField extends StatelessWidget {
+  const _LineUploadField({required this.files, required this.onChanged});
+
+  final List<PendingFile> files;
+  final ValueChanged<List<PendingFile>> onChanged;
+
+  Future<void> _pick(BuildContext context) async {
+    final picked = await showAttachmentPicker(context);
+    if (picked.isEmpty) return;
+    onChanged([...files, ...picked]);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        OutlinedButton.icon(
+          onPressed: () => _pick(context),
+          icon: const Icon(Icons.upload_file_outlined),
+          label: Text(files.isEmpty ? 'Upload' : 'Add files (${files.length})'),
+        ),
+        for (var i = 0; i < files.length; i++)
+          ListTile(
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.insert_drive_file_outlined),
+            title: Text(files[i].filename, maxLines: 1, overflow: TextOverflow.ellipsis),
+            trailing: IconButton(
+              icon: const Icon(Icons.close),
+              onPressed: () {
+                final next = [...files]..removeAt(i);
+                onChanged(next);
+              },
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _ReadOnlyField extends StatelessWidget {
+  const _ReadOnlyField({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: InputDecorator(
+        decoration: InputDecoration(
+          labelText: label,
+          floatingLabelBehavior: FloatingLabelBehavior.always,
+        ),
+        child: Text(
+          value.isEmpty ? '—' : value,
+          style: const TextStyle(color: AppTheme.primary),
+        ),
+      ),
+    );
+  }
 }
 
 class RrApprovalsScreen extends StatefulWidget {
@@ -1125,7 +1581,9 @@ class _RrApprovalsScreenState extends State<RrApprovalsScreen> {
               child: _loading
                   ? const CenteredScrollLoader()
                   : _items.isEmpty
-                      ? EmptyListBody(message: 'No pending approvals')
+                      ? EmptyListBody(
+                          message: listEmptyMessage(noun: 'pending approvals'),
+                        )
                       : ListView.separated(
                           padding: AppTheme.formPadding,
                           itemCount: _items.length,

@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/api_helpers.dart';
+import '../../../core/utils/form_validation_helpers.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../pms/widgets/pickers.dart';
@@ -86,25 +87,22 @@ class _ItemsScreenState extends State<ItemsScreen> {
   }
 
   Future<List<OptionItem>> _loadCategories() async {
-    final res = await context.read<SettingsApis>().categories.list({
-      'limit': 200,
+    final rows = await context.read<SettingsApis>().categories.listAll({
       'sortBy': 'name',
       'sortOrder': 'asc',
     });
     return mapToOptions(
-      res.items,
+      rows,
       labelOfRow: (r) => r['name']?.toString() ?? labelOf(r),
     );
   }
 
   Future<List<OptionItem>> _loadSubCategories(String? categoryId) async {
-    final res = await context.read<SettingsApis>().subCategories.list({
-      'limit': 200,
+    var rows = await context.read<SettingsApis>().subCategories.listAll({
       'sortBy': 'subcategory_name',
       'sortOrder': 'asc',
       if (categoryId != null && categoryId.isNotEmpty) 'category': categoryId,
     });
-    var rows = res.items;
     if (categoryId != null && categoryId.isNotEmpty) {
       rows = rows.where((r) {
         final cid = refId(r['category']);
@@ -118,26 +116,24 @@ class _ItemsScreenState extends State<ItemsScreen> {
   }
 
   Future<List<OptionItem>> _loadUoms() async {
-    final res = await context.read<SettingsApis>().uoms.list({
-      'limit': 200,
+    final rows = await context.read<SettingsApis>().uoms.listAll({
       'sortBy': 'uom_name',
       'sortOrder': 'asc',
     });
     return mapToOptions(
-      res.items,
+      rows,
       labelOfRow: (r) =>
           r['uom_name']?.toString() ?? r['unit']?.toString() ?? labelOf(r),
     );
   }
 
   Future<List<OptionItem>> _loadGsts() async {
-    final res = await context.read<SettingsApis>().gsts.list({
-      'limit': 200,
+    final rows = await context.read<SettingsApis>().gsts.listAll({
       'sortBy': 'gst_name',
       'sortOrder': 'asc',
     });
     return mapToOptions(
-      res.items,
+      rows,
       labelOfRow: (r) {
         final name = r['gst_name']?.toString() ?? 'GST';
         final pct = r['gst_percentage'];
@@ -147,13 +143,12 @@ class _ItemsScreenState extends State<ItemsScreen> {
   }
 
   Future<List<OptionItem>> _loadBrands() async {
-    final res = await context.read<SettingsApis>().brands.list({
-      'limit': 200,
+    final rows = await context.read<SettingsApis>().brands.listAll({
       'sortBy': 'brand_name',
       'sortOrder': 'asc',
     });
     return mapToOptions(
-      res.items,
+      rows,
       labelOfRow: (r) => r['brand_name']?.toString() ?? labelOf(r),
     );
   }
@@ -178,21 +173,13 @@ class _ItemsScreenState extends State<ItemsScreen> {
         TextEditingController(text: row?['specification']?.toString() ?? '');
 
     String? categoryId = refId(row?['category']);
-    String categoryLabel = row?['category'] is Map
-        ? (row!['category']['name']?.toString() ?? '')
-        : '';
+    String categoryLabel = labelOf(row?['category'], fallback: '');
     String? subCategoryId = refId(row?['sub_category']);
-    String subCategoryLabel = row?['sub_category'] is Map
-        ? (row!['sub_category']['subcategory_name']?.toString() ?? '')
-        : '';
+    String subCategoryLabel = labelOf(row?['sub_category'], fallback: '');
     String? uomId = refId(row?['uom']);
-    String uomLabel = row?['uom'] is Map
-        ? (row!['uom']['uom_name']?.toString() ?? '')
-        : '';
+    String uomLabel = labelOf(row?['uom'], fallback: '');
     String? gstId = refId(row?['gst']);
-    String gstLabel = row?['gst'] is Map
-        ? (row!['gst']['gst_name']?.toString() ?? '')
-        : '';
+    String gstLabel = labelOf(row?['gst'], fallback: '');
     var brandIds = idsFromRefs(row?['brands']);
 
     List<OptionItem> categoryOptions = const [];
@@ -202,6 +189,7 @@ class _ItemsScreenState extends State<ItemsScreen> {
     List<OptionItem> brandOptions = const [];
     var optionsLoaded = false;
 
+    final fieldErrors = FieldErrors();
     final saved = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
@@ -258,8 +246,10 @@ class _ItemsScreenState extends State<ItemsScreen> {
                     const SizedBox(height: 12),
                     TextFormField(
                       controller: nameCtrl,
-                      decoration:
-                          const InputDecoration(labelText: 'Item name *'),
+                      decoration: InputDecoration(
+                        labelText: 'Item name *',
+                        errorText: fieldErrors['name'],
+                      ),
                     ),
                     const SizedBox(height: 8),
                     TextFormField(
@@ -271,12 +261,17 @@ class _ItemsScreenState extends State<ItemsScreen> {
                       label: 'Category',
                       required: true,
                       valueLabel: categoryLabel,
+                      errorText: fieldErrors['category'],
                       onTap: () async {
+                        final options = await _loadCategories();
+                        if (!ctx.mounted) return;
+                        setLocal(() => categoryOptions = options);
                         final picked = await showOptionPicker(
                           context,
                           title: 'Select category',
-                          options: categoryOptions,
+                          options: options,
                           selected: categoryId,
+                          emptyMessage: 'No categories found',
                         );
                         if (picked != null) await onCategoryPicked(picked);
                       },
@@ -286,13 +281,18 @@ class _ItemsScreenState extends State<ItemsScreen> {
                       label: 'Sub category',
                       required: true,
                       valueLabel: subCategoryLabel,
+                      errorText: fieldErrors['sub'],
                       enabled: (categoryId ?? '').isNotEmpty,
                       onTap: () async {
+                        final options = await _loadSubCategories(categoryId);
+                        if (!ctx.mounted) return;
+                        setLocal(() => subCategoryOptions = options);
                         final picked = await showOptionPicker(
                           context,
                           title: 'Select sub category',
-                          options: subCategoryOptions,
+                          options: options,
                           selected: subCategoryId,
+                          emptyMessage: 'No sub categories found',
                         );
                         if (picked == null) return;
                         setLocal(() {
@@ -306,6 +306,7 @@ class _ItemsScreenState extends State<ItemsScreen> {
                       label: 'UOM',
                       required: true,
                       valueLabel: uomLabel,
+                      errorText: fieldErrors['uom'],
                       onTap: () async {
                         final picked = await showOptionPicker(
                           context,
@@ -325,6 +326,7 @@ class _ItemsScreenState extends State<ItemsScreen> {
                       label: 'GST',
                       required: true,
                       valueLabel: gstLabel,
+                      errorText: fieldErrors['gst'],
                       onTap: () async {
                         final picked = await showOptionPicker(
                           context,
@@ -355,23 +357,15 @@ class _ItemsScreenState extends State<ItemsScreen> {
                     const SizedBox(height: 12),
                     FilledButton(
                       onPressed: () async {
-                        if (nameCtrl.text.trim().isEmpty) {
-                          showPmsSnack(
-                            context,
-                            'Item name is required',
-                            error: true,
-                          );
-                          return;
-                        }
-                        if ((categoryId ?? '').isEmpty ||
-                            (subCategoryId ?? '').isEmpty ||
-                            (uomId ?? '').isEmpty ||
-                            (gstId ?? '').isEmpty) {
-                          showPmsSnack(
-                            context,
-                            'Category, sub category, UOM and GST are required',
-                            error: true,
-                          );
+                        fieldErrors.clear();
+                        fieldErrors.set('name', requiredText(nameCtrl.text, 'Item name'));
+                        fieldErrors.set('category', requiredSelection(categoryId, 'Category'));
+                        fieldErrors.set('sub', requiredSelection(subCategoryId, 'Sub category'));
+                        fieldErrors.set('uom', requiredSelection(uomId, 'UOM'));
+                        fieldErrors.set('gst', requiredSelection(gstId, 'GST'));
+                        if (fieldErrors.hasErrors) {
+                          setLocal(() {});
+                          showPmsSnack(context, fieldErrors.messages.first, error: true);
                           return;
                         }
                         final payload = <String, dynamic>{
@@ -391,11 +385,20 @@ class _ItemsScreenState extends State<ItemsScreen> {
                           } else {
                             await api.create(payload);
                           }
+                          if (!context.mounted) return;
+                          await showSavedConfirmation(
+                            context,
+                            isEdit ? 'Item updated' : 'Item created',
+                          );
                           if (ctx.mounted) Navigator.pop(ctx, true);
                         } on ApiException catch (e) {
-                          if (context.mounted) {
-                            showPmsSnack(context, e.message, error: true);
-                          }
+                          if (!context.mounted) return;
+                          setLocal(() {
+                            for (final entry in apiFieldErrors(e).entries) {
+                              fieldErrors.set(entry.key, entry.value);
+                            }
+                          });
+                          showPmsSnack(context, formatApiErrorSummary(e), error: true);
                         }
                       },
                       child: Text(isEdit ? 'Save' : 'Create'),
@@ -517,9 +520,7 @@ class _ItemsScreenState extends State<ItemsScreen> {
                               );
                             }
                             final row = _items[i];
-                            final cat = row['category'] is Map
-                                ? row['category']['name']?.toString()
-                                : null;
+                            final cat = labelOf(row['category'], fallback: '');
                             return Card(
                               child: ListTile(
                                 title: Text(
@@ -530,7 +531,7 @@ class _ItemsScreenState extends State<ItemsScreen> {
                                     (row['HSNcode'] ?? row['HSNCode'])
                                             ?.toString() ??
                                         '',
-                                    if (cat != null && cat.isNotEmpty) cat,
+                                    if (cat.isNotEmpty) cat,
                                   ].where((e) => e.isNotEmpty).join(' · '),
                                 ),
                                 trailing: PopupMenuButton<String>(

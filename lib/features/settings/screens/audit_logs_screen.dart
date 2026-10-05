@@ -83,14 +83,7 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
   }
 
   String _userLabel(Map<String, dynamic> row) {
-    final user = row['userId'] ?? row['user'] ?? row['performedBy'];
-    if (user is Map) {
-      return user['name']?.toString() ??
-          user['email']?.toString() ??
-          idOf(user) ??
-          '—';
-    }
-    return user?.toString() ?? '—';
+    return labelOf(row['userId'] ?? row['user'] ?? row['performedBy']);
   }
 
   @override

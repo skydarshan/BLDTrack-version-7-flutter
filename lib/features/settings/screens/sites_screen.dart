@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/api_helpers.dart';
+import '../../../core/utils/form_validation_helpers.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../pms/widgets/pms_widgets.dart';
@@ -101,11 +102,14 @@ class _SitesScreenState extends State<SitesScreen> {
         TextEditingController(text: row?['location']?.toString() ?? '');
     final codeCtrl = TextEditingController(text: row?['code']?.toString() ?? '');
     var address = addressFrom(row?['address']);
+    final fieldErrors = FieldErrors();
 
     final saved = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
       builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setLocal) {
         return Padding(
           padding: AppTheme.sheetPadding(ctx),
           child: SingleChildScrollView(
@@ -123,7 +127,10 @@ class _SitesScreenState extends State<SitesScreen> {
                 const SizedBox(height: 12),
                 TextFormField(
                   controller: nameCtrl,
-                  decoration: const InputDecoration(labelText: 'Site name *'),
+                  decoration: InputDecoration(
+                    labelText: 'Site name *',
+                    errorText: fieldErrors['name'],
+                  ),
                 ),
                 const SizedBox(height: 8),
                 TextFormField(
@@ -133,7 +140,10 @@ class _SitesScreenState extends State<SitesScreen> {
                 const SizedBox(height: 8),
                 TextFormField(
                   controller: codeCtrl,
-                  decoration: const InputDecoration(labelText: 'Code *'),
+                  decoration: InputDecoration(
+                    labelText: 'Code *',
+                    errorText: fieldErrors['code'],
+                  ),
                 ),
                 AddressFields(
                   values: address,
@@ -141,20 +151,12 @@ class _SitesScreenState extends State<SitesScreen> {
                 ),
                 FilledButton(
                   onPressed: () async {
-                    if (nameCtrl.text.trim().isEmpty) {
-                      showPmsSnack(
-                        context,
-                        'Site name is required',
-                        error: true,
-                      );
-                      return;
-                    }
-                    if (codeCtrl.text.trim().isEmpty) {
-                      showPmsSnack(
-                        context,
-                        'Site code is required',
-                        error: true,
-                      );
+                    fieldErrors.clear();
+                    fieldErrors.set('name', requiredText(nameCtrl.text, 'Site name'));
+                    fieldErrors.set('code', requiredText(codeCtrl.text, 'Site code'));
+                    if (fieldErrors.hasErrors) {
+                      setLocal(() {});
+                      showPmsSnack(context, fieldErrors.messages.first, error: true);
                       return;
                     }
                     final payload = {
@@ -170,11 +172,20 @@ class _SitesScreenState extends State<SitesScreen> {
                       } else {
                         await api.create(payload);
                       }
+                      if (!context.mounted) return;
+                      await showSavedConfirmation(
+                        context,
+                        isEdit ? 'Site updated' : 'Site created',
+                      );
                       if (ctx.mounted) Navigator.pop(ctx, true);
                     } on ApiException catch (e) {
-                      if (context.mounted) {
-                        showPmsSnack(context, e.message, error: true);
-                      }
+                      if (!context.mounted) return;
+                      setLocal(() {
+                        for (final entry in apiFieldErrors(e).entries) {
+                          fieldErrors.set(entry.key, entry.value);
+                        }
+                      });
+                      showPmsSnack(context, formatApiErrorSummary(e), error: true);
                     }
                   },
                   child: Text(isEdit ? 'Save' : 'Create'),
@@ -182,6 +193,8 @@ class _SitesScreenState extends State<SitesScreen> {
               ],
             ),
           ),
+        );
+          },
         );
       },
     );
@@ -302,7 +315,7 @@ class _SitesScreenState extends State<SitesScreen> {
                                 subtitle: Text(
                                   [
                                     row['code']?.toString() ?? '',
-                                    row['location']?.toString() ?? '',
+                                    labelOf(row['location'], fallback: ''),
                                   ].where((e) => e.isNotEmpty).join(' · '),
                                 ),
                                 trailing: PopupMenuButton<String>(

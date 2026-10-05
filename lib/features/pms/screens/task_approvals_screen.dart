@@ -89,32 +89,45 @@ class _TaskApprovalsScreenState extends State<TaskApprovalsScreen> {
     required Future<void> Function(String remarks) onSubmit,
   }) async {
     final remarksCtrl = TextEditingController();
+    String? remarkError;
     final ok = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
       builder: (ctx) {
-        return Padding(
-          padding: AppTheme.sheetPadding(ctx),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
-              const SizedBox(height: 12),
-              TextField(
-                controller: remarksCtrl,
-                decoration: InputDecoration(
-                  labelText: required ? 'Remarks *' : 'Remarks (optional)',
-                ),
-                maxLines: 3,
+        return StatefulBuilder(
+          builder: (context, setLocal) {
+            return Padding(
+              padding: AppTheme.sheetPadding(ctx),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: remarksCtrl,
+                    decoration: InputDecoration(
+                      labelText: required ? 'Remarks *' : 'Remarks (optional)',
+                      errorText: remarkError,
+                    ),
+                    maxLines: 3,
+                  ),
+                  const SizedBox(height: 16),
+                  FilledButton(
+                    onPressed: () {
+                      if (required && remarksCtrl.text.trim().isEmpty) {
+                        setLocal(() => remarkError = 'A remark is required');
+                        showPmsSnack(context, 'A remark is required', error: true);
+                        return;
+                      }
+                      Navigator.pop(ctx, true);
+                    },
+                    child: const Text('Confirm'),
+                  ),
+                ],
               ),
-              const SizedBox(height: 16),
-              FilledButton(
-                onPressed: () => Navigator.pop(ctx, true),
-                child: const Text('Confirm'),
-              ),
-            ],
-          ),
+            );
+          },
         );
       },
     );
@@ -124,10 +137,6 @@ class _TaskApprovalsScreenState extends State<TaskApprovalsScreen> {
     }
     final remarks = remarksCtrl.text.trim();
     remarksCtrl.dispose();
-    if (required && remarks.isEmpty) {
-      showPmsSnack(context, 'A remark is required', error: true);
-      return;
-    }
     try {
       await onSubmit(remarks);
       if (!mounted) return;

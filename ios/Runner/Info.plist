@@ -46,10 +46,25 @@
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>NSCameraUsageDescription</key>
-	<string>BldTrack needs camera access to attach photos to projects and task progress.</string>
+	<string>BldTrack needs camera access to attach photos to requisitions, DMR, projects and tasks.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>BldTrack needs photo library access to attach images to projects and tasks.</string>
+	<string>BldTrack needs photo library access to attach images to requisitions, DMR, projects and tasks.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>BldTrack may save attached images to your photo library.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>BldTrack may use the microphone when recording video attachments.</string>
+	<key>LSSupportsOpeningDocumentsInPlace</key>
+	<true/>
+	<key>UISupportsDocumentBrowser</key>
+	<true/>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>https</string>
+		<string>http</string>
+		<string>tel</string>
+		<string>mailto</string>
+	</array>
 </dict>
 </plist>

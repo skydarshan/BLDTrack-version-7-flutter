@@ -100,6 +100,14 @@ class InventoryOpsApi {
     );
   }
 
+  Future<Map<String, dynamic>> nextTransferNumber(String originSiteId) async {
+    final res = await _client.get<Map<String, dynamic>>(
+      '/inter-site-transfers/next-transfer-number',
+      queryParameters: {'origin_site': originSiteId},
+    );
+    return unwrapDataMap(res.data);
+  }
+
   Future<Map<String, dynamic>> getTransfer(String id) async {
     final res = await _client.get<Map<String, dynamic>>('/inter-site-transfers/$id');
     return unwrapDataMap(res.data);

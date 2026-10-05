@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/api_helpers.dart';
+import '../../../core/utils/form_validation_helpers.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../org/org_session.dart';
@@ -279,6 +280,7 @@ class _RolesScreenState extends State<RolesScreen> {
             .toList()
         : null;
     var matrix = _initialMatrix(existing);
+    final fieldErrors = FieldErrors();
 
     final saved = await showModalBottomSheet<bool>(
       context: context,
@@ -303,8 +305,10 @@ class _RolesScreenState extends State<RolesScreen> {
                     const SizedBox(height: 12),
                     TextFormField(
                       controller: nameCtrl,
-                      decoration:
-                          const InputDecoration(labelText: 'Name *'),
+                      decoration: InputDecoration(
+                        labelText: 'Name *',
+                        errorText: fieldErrors['name'],
+                      ),
                     ),
                     const SizedBox(height: 8),
                     TextFormField(
@@ -444,12 +448,11 @@ class _RolesScreenState extends State<RolesScreen> {
                     const SizedBox(height: 8),
                     FilledButton(
                       onPressed: () async {
-                        if (nameCtrl.text.trim().isEmpty) {
-                          showPmsSnack(
-                            context,
-                            'Name is required',
-                            error: true,
-                          );
+                        fieldErrors.clear();
+                        fieldErrors.set('name', requiredText(nameCtrl.text, 'Name'));
+                        if (fieldErrors.hasErrors) {
+                          setLocal(() {});
+                          showPmsSnack(context, fieldErrors.messages.first, error: true);
                           return;
                         }
                         final name = nameCtrl.text.trim();
@@ -475,11 +478,20 @@ class _RolesScreenState extends State<RolesScreen> {
                               });
                             }
                           }
+                          if (!context.mounted) return;
+                          await showSavedConfirmation(
+                            context,
+                            isEdit ? 'Role updated' : 'Role created',
+                          );
                           if (ctx.mounted) Navigator.pop(ctx, true);
                         } on ApiException catch (e) {
-                          if (context.mounted) {
-                            showPmsSnack(context, e.message, error: true);
-                          }
+                          if (!context.mounted) return;
+                          setLocal(() {
+                            for (final entry in apiFieldErrors(e).entries) {
+                              fieldErrors.set(entry.key, entry.value);
+                            }
+                          });
+                          showPmsSnack(context, formatApiErrorSummary(e), error: true);
                         }
                       },
                       child: Text(isEdit ? 'Save' : 'Create'),

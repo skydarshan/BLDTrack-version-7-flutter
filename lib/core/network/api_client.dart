@@ -143,6 +143,7 @@ class ApiClient {
     String path, {
     Map<String, dynamic>? payload,
     Map<String, MultipartFileEntry> namedFiles = const {},
+    List<MapEntry<String, MultipartFileEntry>> extraFiles = const [],
     Map<String, dynamic>? fields,
     Map<String, dynamic>? queryParameters,
     bool put = false,
@@ -159,6 +160,9 @@ class ApiClient {
     namedFiles.forEach((name, file) {
       form.files.add(MapEntry(name, file.toMultipartFile()));
     });
+    for (final entry in extraFiles) {
+      form.files.add(MapEntry(entry.key, entry.value.toMultipartFile()));
+    }
     return _multipart<T>(
       () => put
           ? _dio.put<T>(path, data: form, queryParameters: queryParameters)

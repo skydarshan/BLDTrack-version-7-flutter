@@ -1,7 +1,6 @@
-import 'dart:typed_data';
-
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -48,16 +47,125 @@ Future<List<PendingFile>> pickPmsFiles({
       .toList();
 }
 
+Future<PendingFile?> _pendingFromXFile(XFile shot) async {
+  final bytes = await shot.readAsBytes();
+  final name = shot.name.trim().isEmpty ? 'photo.jpg' : shot.name;
+  final mime = shot.mimeType ?? (name.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg');
+  return PendingFile(bytes: bytes, filename: name, contentType: mime);
+}
+
 Future<PendingFile?> pickCameraPhoto() async {
   final picker = ImagePicker();
   final shot = await picker.pickImage(source: ImageSource.camera, imageQuality: 85);
   if (shot == null) return null;
-  final bytes = await shot.readAsBytes();
-  return PendingFile(
-    bytes: bytes,
-    filename: shot.name,
-    contentType: 'image/jpeg',
+  return _pendingFromXFile(shot);
+}
+
+Future<List<PendingFile>> pickGalleryPhotos({bool allowMultiple = true}) async {
+  final picker = ImagePicker();
+  if (!allowMultiple) {
+    final shot = await picker.pickImage(source: ImageSource.gallery, imageQuality: 85);
+    if (shot == null) return const [];
+    final file = await _pendingFromXFile(shot);
+    return file == null ? const [] : [file];
+  }
+  final shots = await picker.pickMultiImage(imageQuality: 85);
+  final out = <PendingFile>[];
+  for (final shot in shots) {
+    final file = await _pendingFromXFile(shot);
+    if (file != null) out.add(file);
+  }
+  return out;
+}
+
+String mediaAccessMessage(PlatformException error) {
+  final code = error.code.toLowerCase();
+  final detail = (error.message ?? '').toLowerCase();
+  if (code.contains('camera') || detail.contains('camera')) {
+    return 'Camera is blocked. Allow camera for BldTrack in phone Settings, then try again.';
+  }
+  return 'Photos are blocked. Allow photos for BldTrack in phone Settings, then try again.';
+}
+
+void _showMediaMessage(BuildContext context, String message) {
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(content: Text(message), backgroundColor: AppTheme.danger),
   );
+}
+
+/// Camera, gallery, or files. Permission denial stays on screen as a message.
+Future<List<PendingFile>> showAttachmentPicker(
+  BuildContext context, {
+  bool allowMultiple = true,
+}) async {
+  final choice = await showModalBottomSheet<String>(
+    context: context,
+    builder: (ctx) => SafeArea(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ListTile(
+            leading: const Icon(Icons.photo_camera_outlined),
+            title: const Text('Take photo'),
+            onTap: () => Navigator.pop(ctx, 'camera'),
+          ),
+          ListTile(
+            leading: const Icon(Icons.photo_library_outlined),
+            title: const Text('Choose from gallery'),
+            onTap: () => Navigator.pop(ctx, 'gallery'),
+          ),
+          ListTile(
+            leading: const Icon(Icons.folder_open_outlined),
+            title: const Text('Choose a file'),
+            onTap: () => Navigator.pop(ctx, 'files'),
+          ),
+        ],
+      ),
+    ),
+  );
+  if (choice == null || !context.mounted) return const [];
+  try {
+    if (choice == 'camera') {
+      final photo = await pickCameraPhoto();
+      return photo == null ? const [] : [photo];
+    }
+    if (choice == 'gallery') {
+      return await pickGalleryPhotos(allowMultiple: allowMultiple);
+    }
+    return await pickPmsFiles(allowMultiple: allowMultiple);
+  } on PlatformException catch (error) {
+    if (context.mounted) _showMediaMessage(context, mediaAccessMessage(error));
+    return const [];
+  } catch (_) {
+    if (context.mounted) {
+      _showMediaMessage(context, 'Could not add the file. Try again.');
+    }
+    return const [];
+  }
+}
+
+Future<void> openAttachment(BuildContext context, String url) async {
+  final uri = Uri.tryParse(url);
+  if (uri == null || !(uri.isScheme('http') || uri.isScheme('https'))) {
+    _showMediaMessage(context, 'This file cannot be opened.');
+    return;
+  }
+  try {
+    final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!opened && context.mounted) {
+      _showMediaMessage(context, 'Could not open the file. Try again.');
+    }
+  } catch (_) {
+    if (context.mounted) {
+      _showMediaMessage(context, 'Could not open the file. Try again.');
+    }
+  }
+}
+
+List<String> attachmentUrlsOf(dynamic raw) {
+  if (raw is String && raw.trim().isNotEmpty) return [raw.trim()];
+  if (raw is! List) return const [];
+  return raw.map(attachmentUrl).where((url) => url.isNotEmpty).toList();
 }
 
 class MediaPickerBar extends StatelessWidget {
@@ -71,34 +179,9 @@ class MediaPickerBar extends StatelessWidget {
   final ValueChanged<List<PendingFile>> onChanged;
 
   Future<void> _addFiles(BuildContext context) async {
-    final choice = await showModalBottomSheet<String>(
-      context: context,
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.photo_camera_outlined),
-              title: const Text('Take photo'),
-              onTap: () => Navigator.pop(ctx, 'camera'),
-            ),
-            ListTile(
-              leading: const Icon(Icons.photo_library_outlined),
-              title: const Text('Choose from gallery / files'),
-              onTap: () => Navigator.pop(ctx, 'files'),
-            ),
-          ],
-        ),
-      ),
-    );
-    if (choice == null) return;
-    if (choice == 'camera') {
-      final photo = await pickCameraPhoto();
-      if (photo != null) onChanged([...files, photo]);
-      return;
-    }
-    final picked = await pickPmsFiles();
-    if (picked.isNotEmpty) onChanged([...files, ...picked]);
+    final picked = await showAttachmentPicker(context);
+    if (picked.isEmpty) return;
+    onChanged([...files, ...picked]);
   }
 
   @override
@@ -188,7 +271,7 @@ class MediaListPanel extends StatelessWidget {
           }),
           title: Text(item.name, maxLines: 1, overflow: TextOverflow.ellipsis),
           subtitle: Text(item.type),
-          onTap: () => launchUrl(Uri.parse(item.url), mode: LaunchMode.externalApplication),
+          onTap: () => openAttachment(context, item.url),
           trailing: onRemove == null
               ? null
               : IconButton(

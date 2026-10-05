@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/api_helpers.dart';
+import '../../../core/utils/form_validation_helpers.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../pms/widgets/pms_widgets.dart';
@@ -107,11 +108,14 @@ class _CompaniesScreenState extends State<CompaniesScreen> {
     final panCtrl =
         TextEditingController(text: row?['pan_number']?.toString() ?? '');
     var address = addressFrom(row?['address']);
+    final fieldErrors = FieldErrors();
 
     final saved = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
       builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setLocal) {
         return Padding(
           padding: AppTheme.sheetPadding(ctx),
           child: SingleChildScrollView(
@@ -129,13 +133,18 @@ class _CompaniesScreenState extends State<CompaniesScreen> {
                 const SizedBox(height: 12),
                 TextFormField(
                   controller: nameCtrl,
-                  decoration:
-                      const InputDecoration(labelText: 'Company name *'),
+                  decoration: InputDecoration(
+                    labelText: 'Company name *',
+                    errorText: fieldErrors['name'],
+                  ),
                 ),
                 const SizedBox(height: 8),
                 TextFormField(
                   controller: codeCtrl,
-                  decoration: const InputDecoration(labelText: 'Code'),
+                  decoration: InputDecoration(
+                    labelText: 'Code *',
+                    errorText: fieldErrors['code'],
+                  ),
                 ),
                 const SizedBox(height: 8),
                 TextFormField(
@@ -147,8 +156,10 @@ class _CompaniesScreenState extends State<CompaniesScreen> {
                 TextFormField(
                   controller: phoneCtrl,
                   keyboardType: TextInputType.phone,
-                  decoration:
-                      const InputDecoration(labelText: 'Phone number'),
+                  decoration: InputDecoration(
+                    labelText: 'Phone number *',
+                    errorText: fieldErrors['phone'],
+                  ),
                 ),
                 const SizedBox(height: 8),
                 TextFormField(
@@ -158,7 +169,10 @@ class _CompaniesScreenState extends State<CompaniesScreen> {
                 const SizedBox(height: 8),
                 TextFormField(
                   controller: panCtrl,
-                  decoration: const InputDecoration(labelText: 'PAN number'),
+                  decoration: InputDecoration(
+                    labelText: 'PAN number *',
+                    errorText: fieldErrors['pan'],
+                  ),
                 ),
                 AddressFields(
                   values: address,
@@ -166,25 +180,15 @@ class _CompaniesScreenState extends State<CompaniesScreen> {
                 ),
                 FilledButton(
                   onPressed: () async {
-                    if (nameCtrl.text.trim().isEmpty) {
-                      showPmsSnack(
-                        context,
-                        'Company name is required',
-                        error: true,
-                      );
-                      return;
-                    }
-                    if (codeCtrl.text.trim().isEmpty || panCtrl.text.trim().isEmpty) {
-                      showPmsSnack(
-                        context,
-                        'Company code and PAN are required',
-                        error: true,
-                      );
-                      return;
-                    }
+                    fieldErrors.clear();
+                    fieldErrors.set('name', requiredText(nameCtrl.text, 'Company name'));
+                    fieldErrors.set('code', requiredText(codeCtrl.text, 'Company code'));
+                    fieldErrors.set('pan', requiredText(panCtrl.text, 'PAN number'));
                     final phone = int.tryParse(phoneCtrl.text.replaceAll(RegExp(r'\D'), ''));
-                    if (phone == null) {
-                      showPmsSnack(context, 'Phone number is required', error: true);
+                    fieldErrors.set('phone', phone == null ? 'Phone number is required' : null);
+                    if (fieldErrors.hasErrors) {
+                      setLocal(() {});
+                      showPmsSnack(context, fieldErrors.messages.first, error: true);
                       return;
                     }
                     final payload = {
@@ -192,7 +196,7 @@ class _CompaniesScreenState extends State<CompaniesScreen> {
                       'code': codeCtrl.text.trim(),
                       'contact_person': contactCtrl.text.trim(),
                       'dialcode': 91,
-                      'phone_number': phone,
+                      'phone_number': phone!,
                       'gst_number': gstCtrl.text.trim(),
                       'pan_number': panCtrl.text.trim(),
                       'address': address,
@@ -204,11 +208,20 @@ class _CompaniesScreenState extends State<CompaniesScreen> {
                       } else {
                         await api.create(payload);
                       }
+                      if (!context.mounted) return;
+                      await showSavedConfirmation(
+                        context,
+                        isEdit ? 'Company updated' : 'Company created',
+                      );
                       if (ctx.mounted) Navigator.pop(ctx, true);
                     } on ApiException catch (e) {
-                      if (context.mounted) {
-                        showPmsSnack(context, e.message, error: true);
-                      }
+                      if (!context.mounted) return;
+                      setLocal(() {
+                        for (final entry in apiFieldErrors(e).entries) {
+                          fieldErrors.set(entry.key, entry.value);
+                        }
+                      });
+                      showPmsSnack(context, formatApiErrorSummary(e), error: true);
                     }
                   },
                   child: Text(isEdit ? 'Save' : 'Create'),
@@ -216,6 +229,8 @@ class _CompaniesScreenState extends State<CompaniesScreen> {
               ],
             ),
           ),
+        );
+          },
         );
       },
     );

@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/api_helpers.dart';
+import '../../../core/utils/form_validation_helpers.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../pms/widgets/pms_widgets.dart';
@@ -120,11 +121,14 @@ class _VendorsScreenState extends State<VendorsScreen> {
     final panCtrl =
         TextEditingController(text: row?['pan_number']?.toString() ?? '');
     var address = addressFrom(row?['address']);
+    final fieldErrors = FieldErrors();
 
     final saved = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
       builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setLocal) {
         return Padding(
           padding: AppTheme.sheetPadding(ctx),
           child: SingleChildScrollView(
@@ -142,8 +146,10 @@ class _VendorsScreenState extends State<VendorsScreen> {
                 const SizedBox(height: 12),
                 TextFormField(
                   controller: nameCtrl,
-                  decoration:
-                      const InputDecoration(labelText: 'Vendor name *'),
+                  decoration: InputDecoration(
+                    labelText: 'Vendor name *',
+                    errorText: fieldErrors['name'],
+                  ),
                 ),
                 const SizedBox(height: 8),
                 TextFormField(
@@ -183,12 +189,11 @@ class _VendorsScreenState extends State<VendorsScreen> {
                 ),
                 FilledButton(
                   onPressed: () async {
-                    if (nameCtrl.text.trim().isEmpty) {
-                      showPmsSnack(
-                        context,
-                        'Vendor name is required',
-                        error: true,
-                      );
+                    fieldErrors.clear();
+                    fieldErrors.set('name', requiredText(nameCtrl.text, 'Vendor name'));
+                    if (fieldErrors.hasErrors) {
+                      setLocal(() {});
+                      showPmsSnack(context, fieldErrors.messages.first, error: true);
                       return;
                     }
                     final payload = {
@@ -208,11 +213,20 @@ class _VendorsScreenState extends State<VendorsScreen> {
                       } else {
                         await api.create(payload);
                       }
+                      if (!context.mounted) return;
+                      await showSavedConfirmation(
+                        context,
+                        isEdit ? 'Vendor updated' : 'Vendor created',
+                      );
                       if (ctx.mounted) Navigator.pop(ctx, true);
                     } on ApiException catch (e) {
-                      if (context.mounted) {
-                        showPmsSnack(context, e.message, error: true);
-                      }
+                      if (!context.mounted) return;
+                      setLocal(() {
+                        for (final entry in apiFieldErrors(e).entries) {
+                          fieldErrors.set(entry.key, entry.value);
+                        }
+                      });
+                      showPmsSnack(context, formatApiErrorSummary(e), error: true);
                     }
                   },
                   child: Text(isEdit ? 'Save' : 'Create'),
@@ -220,6 +234,8 @@ class _VendorsScreenState extends State<VendorsScreen> {
               ],
             ),
           ),
+        );
+          },
         );
       },
     );

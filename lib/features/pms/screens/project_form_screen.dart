@@ -222,8 +222,11 @@ class _ProjectFormScreenState extends State<ProjectFormScreen> {
         );
       }
       if (!mounted) return;
-      showPmsSnack(context, widget.isEdit ? 'Project updated' : 'Project created');
-      context.pop(true);
+      await showSavedConfirmation(
+        context,
+        widget.isEdit ? 'Project updated' : 'Project created',
+      );
+      if (mounted) context.pop(true);
     } on ApiException catch (e) {
       if (!mounted) return;
       _fieldErrors.merge(apiFieldErrors(e));
@@ -280,11 +283,9 @@ class _ProjectFormScreenState extends State<ProjectFormScreen> {
                       valueLabel: _siteLabel,
                       errorText: _fieldErrors['site'],
                       onTap: () async {
-                        var options = _sites;
-                        if (options.isEmpty) {
-                          options = await loadSiteOptions(context);
-                          if (mounted) setState(() => _sites = options);
-                        }
+                        final options = await loadSiteOptions(context);
+                        if (!mounted) return;
+                        setState(() => _sites = options);
                         if (!context.mounted) return;
                         final picked = await showOptionPicker(
                           context,

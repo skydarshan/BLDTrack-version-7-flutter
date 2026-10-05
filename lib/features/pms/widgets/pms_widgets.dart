@@ -4,21 +4,34 @@ import '../../../core/network/api_helpers.dart';
 import '../../../core/theme/app_theme.dart';
 
 class StatusChip extends StatelessWidget {
-  const StatusChip({super.key, required this.status});
+  const StatusChip({super.key, required this.status, this.label});
 
   final String? status;
+  final String? label;
 
   Color _bg() {
     switch (status) {
       case 'completed':
+      case 'Closed':
+      case 'Approved':
         return const Color(0xFFB7EB8F);
+      case 'Dispatched':
+      case 'Partially Received':
       case 'in_progress':
         return const Color(0xFF91D5FF);
       case 'on_hold':
         return const Color(0xFFFFD666);
       case 'cancelled':
       case 'archived':
+      case 'Rejected':
         return const Color(0xFFD9D9D9);
+      case 'pending':
+      case 'hold':
+      case 'open':
+      case 'Pending':
+        return const Color(0xFFFFD666);
+      case 'partial':
+        return const Color(0xFF91D5FF);
       case 'completion_requested':
       case 'pending_approval':
         return const Color(0xFFD3ADF7);
@@ -32,14 +45,26 @@ class StatusChip extends StatelessWidget {
   Color _fg() {
     switch (status) {
       case 'completed':
+      case 'Closed':
+      case 'Approved':
         return const Color(0xFF237804);
+      case 'Dispatched':
+      case 'Partially Received':
       case 'in_progress':
         return const Color(0xFF0050B3);
       case 'on_hold':
         return const Color(0xFFAD6800);
       case 'cancelled':
       case 'archived':
+      case 'Rejected':
         return const Color(0xFF434343);
+      case 'pending':
+      case 'hold':
+      case 'open':
+      case 'Pending':
+        return const Color(0xFFAD6800);
+      case 'partial':
+        return const Color(0xFF0050B3);
       case 'completion_requested':
       case 'pending_approval':
         return const Color(0xFF531DAB);
@@ -59,7 +84,7 @@ class StatusChip extends StatelessWidget {
         borderRadius: BorderRadius.circular(999),
       ),
       child: Text(
-        statusLabel(status),
+        label ?? statusLabel(status),
         style: TextStyle(
           color: _fg(),
           fontSize: 12,
@@ -250,6 +275,36 @@ class EmptyListBody extends StatelessWidget {
   }
 }
 
+class ListPaginationRow extends StatelessWidget {
+  const ListPaginationRow({
+    super.key,
+    required this.page,
+    required this.totalPages,
+    required this.onPrev,
+    required this.onNext,
+  });
+
+  final int page;
+  final int totalPages;
+  final VoidCallback? onPrev;
+  final VoidCallback? onNext;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          TextButton(onPressed: onPrev, child: const Text('Prev')),
+          Text('$page / $totalPages', style: const TextStyle(color: AppTheme.muted)),
+          TextButton(onPressed: onNext, child: const Text('Next')),
+        ],
+      ),
+    );
+  }
+}
+
 class ErrorBanner extends StatelessWidget {
   const ErrorBanner({super.key, required this.message, this.onRetry});
 
@@ -292,6 +347,19 @@ Future<void> showPmsSnack(
     ),
   );
   return Future.value();
+}
+
+Future<void> showSavedConfirmation(BuildContext context, String message) {
+  return showDialog<void>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: const Text('Saved'),
+      content: Text(message),
+      actions: [
+        FilledButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK')),
+      ],
+    ),
+  );
 }
 
 /// Inline banner listing field validation errors at the top of a form.
@@ -338,6 +406,36 @@ class ValidationSummaryBanner extends StatelessWidget {
             ),
         ],
       ),
+    );
+  }
+}
+
+class NamedItemLines extends StatelessWidget {
+  const NamedItemLines({super.key, required this.items});
+
+  final List<Map<String, dynamic>> items;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('Items', style: TextStyle(fontWeight: FontWeight.w700)),
+        if (items.isEmpty)
+          const Padding(
+            padding: EdgeInsets.only(top: 8),
+            child: Text('No line items'),
+          )
+        else
+          for (final line in items)
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              title: Text(itemLabel(line)),
+              subtitle: Text(
+                itemQtySubtitle(line).isEmpty ? '—' : itemQtySubtitle(line),
+              ),
+            ),
+      ],
     );
   }
 }

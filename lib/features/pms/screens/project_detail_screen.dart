@@ -36,6 +36,7 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen>
   Map<String, dynamic>? _timeline;
   Map<String, dynamic>? _board;
   bool _mediaBusy = false;
+  String? _mediaError;
   List<PendingFile> _pendingMedia = [];
   Map<String, dynamic>? _importPreview;
   bool _importing = false;
@@ -115,7 +116,10 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen>
       showPmsSnack(context, 'Select files to upload', error: true);
       return;
     }
-    setState(() => _mediaBusy = true);
+    setState(() {
+      _mediaBusy = true;
+      _mediaError = null;
+    });
     try {
       await context.read<PmsServices>().projects.update(
             widget.projectId,
@@ -129,7 +133,11 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen>
           await context.read<PmsServices>().projects.getById(widget.projectId);
       if (mounted) setState(() => _project = project);
     } on ApiException catch (e) {
-      if (mounted) showPmsSnack(context, e.message, error: true);
+      if (mounted) setState(() => _mediaError = e.message);
+    } catch (_) {
+      if (mounted) {
+        setState(() => _mediaError = 'Upload failed. Check the connection and tap Retry.');
+      }
     } finally {
       if (mounted) setState(() => _mediaBusy = false);
     }
@@ -270,37 +278,49 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen>
       text: '${_project?['project_name'] ?? 'Project'} template',
     );
     final descCtrl = TextEditingController();
+    String? nameError;
     final ok = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Save as template'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: nameCtrl,
-              decoration: const InputDecoration(labelText: 'Template name *'),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: descCtrl,
-              decoration: const InputDecoration(labelText: 'Description'),
-              maxLines: 2,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setLocal) => AlertDialog(
+          title: const Text('Save as template'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: nameCtrl,
+                decoration: InputDecoration(
+                  labelText: 'Template name *',
+                  errorText: nameError,
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: descCtrl,
+                decoration: const InputDecoration(labelText: 'Description'),
+                maxLines: 2,
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+            FilledButton(
+              onPressed: () {
+                if (nameCtrl.text.trim().length < 2) {
+                  setLocal(() => nameError = 'Template name is required');
+                  showPmsSnack(context, 'Template name is required', error: true);
+                  return;
+                }
+                Navigator.pop(ctx, true);
+              },
+              child: const Text('Save'),
             ),
           ],
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Save')),
-        ],
       ),
     );
     if (ok != true || !mounted) return;
     final name = nameCtrl.text.trim();
-    if (name.length < 2) {
-      showPmsSnack(context, 'Template name is required', error: true);
-      return;
-    }
     try {
       await context.read<PmsServices>().projects.saveAsTemplate(
         widget.projectId,
@@ -311,7 +331,7 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen>
         },
       );
       if (!mounted) return;
-      showPmsSnack(context, 'Template created from project');
+      await showSavedConfirmation(context, 'Template created from project');
     } on ApiException catch (e) {
       if (mounted) showPmsSnack(context, e.message, error: true);
     }
@@ -468,6 +488,7 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen>
                       project: project ?? const {},
                       pending: _pendingMedia,
                       busy: _mediaBusy,
+                      error: _mediaError,
                       onPendingChanged: (v) => setState(() => _pendingMedia = v),
                       onUpload: _uploadMedia,
                       onRemove: _removeMedia,
@@ -596,6 +617,7 @@ class _MediaTab extends StatelessWidget {
     required this.project,
     required this.pending,
     required this.busy,
+    required this.error,
     required this.onPendingChanged,
     required this.onUpload,
     required this.onRemove,
@@ -604,6 +626,7 @@ class _MediaTab extends StatelessWidget {
   final Map<String, dynamic> project;
   final List<PendingFile> pending;
   final bool busy;
+  final String? error;
   final ValueChanged<List<PendingFile>> onPendingChanged;
   final VoidCallback onUpload;
   final Future<void> Function(String type, String url) onRemove;
@@ -613,6 +636,7 @@ class _MediaTab extends StatelessWidget {
     return ListView(
       padding: AppTheme.formPadding,
       children: [
+        if (error != null) ErrorBanner(message: error!, onRetry: busy ? null : onUpload),
         MediaPickerBar(files: pending, onChanged: onPendingChanged),
         const SizedBox(height: 8),
         FilledButton(

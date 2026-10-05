@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../../core/network/api_exception.dart';
+import '../../../core/utils/form_validation_helpers.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../pms/widgets/pms_widgets.dart';
@@ -26,6 +27,7 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
   bool _busy = false;
   String? _error;
   String? _statusMessage;
+  final _fieldErrors = FieldErrors();
 
   Permissions get _perms => Permissions(context.read<AuthProvider>().user);
 
@@ -116,24 +118,22 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
   Map<String, dynamic>? _smtpPayload() {
     final provider = _providerCtrl.text.trim();
     final user = _userCtrl.text.trim();
-    if (provider.isEmpty) {
-      showPmsSnack(context, 'SMTP provider is required', error: true);
-      return null;
-    }
-    if (user.isEmpty) {
-      showPmsSnack(context, 'SMTP user is required', error: true);
-      return null;
-    }
+    _fieldErrors.clear();
+    _fieldErrors.set('provider', requiredText(provider, 'SMTP provider'));
+    _fieldErrors.set('user', requiredText(user, 'SMTP user'));
     if (provider == 'custom') {
       if (_hostCtrl.text.trim().length < 3) {
-        showPmsSnack(context, 'SMTP host is required for custom provider', error: true);
-        return null;
+        _fieldErrors.set('host', 'SMTP host is required for custom provider');
       }
       final port = int.tryParse(_portCtrl.text.trim());
       if (port == null || port < 1 || port > 65535) {
-        showPmsSnack(context, 'SMTP port must be between 1 and 65535', error: true);
-        return null;
+        _fieldErrors.set('port', 'SMTP port must be between 1 and 65535');
       }
+    }
+    if (_fieldErrors.hasErrors) {
+      setState(() {});
+      showPmsSnack(context, _fieldErrors.messages.first, error: true);
+      return null;
     }
     final payload = <String, dynamic>{
       'smtpProvider': provider,
@@ -153,12 +153,22 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
   Future<void> _save() async {
     final payload = _smtpPayload();
     if (payload == null) return;
-    await _run(
-      () async {
-        await context.read<SettingsApis>().updateNotificationEmail(payload);
-      },
-      'Notification email saved',
-    );
+    setState(() => _busy = true);
+    try {
+      await context.read<SettingsApis>().updateNotificationEmail(payload);
+      if (!mounted) return;
+      await showSavedConfirmation(context, 'Notification email saved');
+      if (!mounted) return;
+      setState(() => _statusMessage = 'Notification email saved');
+      await _load();
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      _fieldErrors.merge(apiFieldErrors(e));
+      setState(() {});
+      showPmsSnack(context, formatApiErrorSummary(e), error: true);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   @override
@@ -201,13 +211,17 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
                         ),
                       ),
                       const SizedBox(height: 12),
+                      if (_fieldErrors.hasErrors)
+                        ValidationSummaryBanner(messages: _fieldErrors.messages),
                       DropdownButtonFormField<String>(
                         initialValue: ['gmail', 'outlook', 'custom']
                                 .contains(_providerCtrl.text)
                             ? _providerCtrl.text
                             : 'gmail',
-                        decoration:
-                            const InputDecoration(labelText: 'SMTP provider'),
+                        decoration: InputDecoration(
+                          labelText: 'SMTP provider *',
+                          errorText: _fieldErrors['provider'],
+                        ),
                         items: const [
                           DropdownMenuItem(
                             value: 'gmail',
@@ -235,14 +249,20 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
                         TextFormField(
                           controller: _hostCtrl,
                           enabled: !_busy,
-                          decoration: const InputDecoration(labelText: 'SMTP host *'),
+                          decoration: InputDecoration(
+                            labelText: 'SMTP host *',
+                            errorText: _fieldErrors['host'],
+                          ),
                         ),
                         const SizedBox(height: 8),
                         TextFormField(
                           controller: _portCtrl,
                           enabled: !_busy,
                           keyboardType: TextInputType.number,
-                          decoration: const InputDecoration(labelText: 'SMTP port *'),
+                          decoration: InputDecoration(
+                            labelText: 'SMTP port *',
+                            errorText: _fieldErrors['port'],
+                          ),
                         ),
                       ],
                       const SizedBox(height: 8),
@@ -250,8 +270,10 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
                         controller: _userCtrl,
                         enabled: !_busy,
                         keyboardType: TextInputType.emailAddress,
-                        decoration:
-                            const InputDecoration(labelText: 'SMTP user'),
+                        decoration: InputDecoration(
+                          labelText: 'SMTP user *',
+                          errorText: _fieldErrors['user'],
+                        ),
                       ),
                       const SizedBox(height: 8),
                       TextFormField(

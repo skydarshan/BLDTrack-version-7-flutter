@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
 import '../../../core/network/api_exception.dart';
+import '../../../core/utils/form_validation_helpers.dart';
 import '../../../core/theme/app_theme.dart';
 import '../services/pms_services.dart';
 import '../utils/pms_constants.dart';
@@ -70,10 +71,14 @@ class _TemplateFormScreenState extends State<TemplateFormScreen> {
 
   Future<void> _submit() async {
     FocusScope.of(context).unfocus();
-    if (!(_formKey.currentState?.validate() ?? false)) return;
+    if (!(_formKey.currentState?.validate() ?? false)) {
+      showPmsSnack(context, 'Name is required (min 2 characters)', error: true);
+      return;
+    }
     final serialized = serializeTemplateTasks(_tasks);
     if (serialized.isEmpty) {
       setState(() => _tasksError = 'Add at least one task with a title');
+      showPmsSnack(context, 'Add at least one task with a title', error: true);
       return;
     }
     setState(() {
@@ -98,14 +103,14 @@ class _TemplateFormScreenState extends State<TemplateFormScreen> {
         });
       }
       if (!mounted) return;
-      showPmsSnack(
+      await showSavedConfirmation(
         context,
         widget.isEdit ? 'Template updated' : 'Template created',
       );
-      context.pop(true);
+      if (mounted) context.pop(true);
     } on ApiException catch (e) {
       if (!mounted) return;
-      showPmsSnack(context, e.message, error: true);
+      showPmsSnack(context, formatApiErrorSummary(e), error: true);
     } finally {
       if (mounted) setState(() => _saving = false);
     }

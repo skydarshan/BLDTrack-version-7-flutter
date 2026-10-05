@@ -28,6 +28,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
   List<Map<String, dynamic>> _comments = [];
   final _commentCtrl = TextEditingController();
   bool _mediaBusy = false;
+  String? _mediaError;
   List<PendingFile> _pendingMedia = [];
   List<OptionItem> _users = const [];
 
@@ -346,7 +347,10 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
       showPmsSnack(context, 'Select files first', error: true);
       return;
     }
-    setState(() => _mediaBusy = true);
+    setState(() {
+      _mediaBusy = true;
+      _mediaError = null;
+    });
     try {
       await context.read<PmsServices>().tasks.addMedia(
             widget.taskId,
@@ -357,7 +361,11 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
       setState(() => _pendingMedia = []);
       await _load();
     } on ApiException catch (e) {
-      if (mounted) showPmsSnack(context, e.message, error: true);
+      if (mounted) setState(() => _mediaError = e.message);
+    } catch (_) {
+      if (mounted) {
+        setState(() => _mediaError = 'Upload failed. Check the connection and tap Retry.');
+      }
     } finally {
       if (mounted) setState(() => _mediaBusy = false);
     }
@@ -636,6 +644,11 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                         ),
                       ),
                       const SizedBox(height: 8),
+                      if (_mediaError != null)
+                        ErrorBanner(
+                          message: _mediaError!,
+                          onRetry: _mediaBusy ? null : _uploadMedia,
+                        ),
                       MediaPickerBar(
                         files: _pendingMedia,
                         onChanged: (v) => setState(() => _pendingMedia = v),

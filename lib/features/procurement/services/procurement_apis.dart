@@ -69,17 +69,35 @@ class RequisitionRequestsApi {
     return asMapList(unwrapDataList(res.data));
   }
 
-  Future<dynamic> getNextNumber(String site) async {
+  Future<int?> getNextNumber(String site) async {
     final res = await _client.get<Map<String, dynamic>>(
       '/requisition-requests/next-requisition-number',
       queryParameters: {'site': site},
     );
     final data = unwrapDataMap(res.data);
-    return data['requisition_request_number'] ?? data['next'] ?? data['number'] ?? data;
+    final raw = firstNonNull(data, [
+      'next_requisition_request_number',
+      'requisition_request_number',
+      'next',
+      'number',
+    ]);
+    if (raw is num) return raw.toInt();
+    return int.tryParse(raw?.toString().trim() ?? '');
   }
 
-  Future<Map<String, dynamic>> create(Map<String, dynamic> data) async {
-    final res = await _client.post<Map<String, dynamic>>('/requisition-requests', data: data);
+  Future<Map<String, dynamic>> create(
+    Map<String, dynamic> data, {
+    List<MapEntry<String, MultipartFileEntry>> files = const [],
+  }) async {
+    if (files.isEmpty) {
+      final res = await _client.post<Map<String, dynamic>>('/requisition-requests', data: data);
+      return unwrapDataMap(res.data);
+    }
+    final res = await _client.postNamedMultipart<Map<String, dynamic>>(
+      '/requisition-requests',
+      payload: data,
+      extraFiles: files,
+    );
     return unwrapDataMap(res.data);
   }
 

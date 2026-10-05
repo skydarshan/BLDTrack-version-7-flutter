@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/api_helpers.dart';
+import '../../../core/utils/form_validation_helpers.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../pms/widgets/pms_widgets.dart';
@@ -170,6 +171,7 @@ class _MasterCrudScreenState extends State<MasterCrudScreen> {
       }
     }
 
+    final fieldErrors = <String, String>{};
     final saved = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
@@ -199,6 +201,7 @@ class _MasterCrudScreenState extends State<MasterCrudScreen> {
                         obscureText: f.obscure,
                         decoration: InputDecoration(
                           labelText: f.required ? '${f.label} *' : f.label,
+                          errorText: fieldErrors[f.key],
                         ),
                       ),
                       const SizedBox(height: 8),
@@ -213,25 +216,20 @@ class _MasterCrudScreenState extends State<MasterCrudScreen> {
                     const SizedBox(height: 12),
                     FilledButton(
                       onPressed: () async {
+                        fieldErrors.clear();
                         for (final f in widget.fields) {
-                          if (f.required &&
-                              controllers[f.key]!.text.trim().isEmpty) {
-                            showPmsSnack(
-                              context,
-                              '${f.label} is required',
-                              error: true,
-                            );
-                            return;
+                          final text = controllers[f.key]!.text.trim();
+                          if (f.required && text.isEmpty) {
+                            fieldErrors[f.key] = '${f.label} is required';
+                          } else if (['location_name', 'activity_name'].contains(f.key) &&
+                              text.length < 2) {
+                            fieldErrors[f.key] = '${f.label} must be at least 2 characters';
                           }
-                          if (['location_name', 'activity_name'].contains(f.key) &&
-                              controllers[f.key]!.text.trim().length < 2) {
-                            showPmsSnack(
-                              context,
-                              '${f.label} must be at least 2 characters',
-                              error: true,
-                            );
-                            return;
-                          }
+                        }
+                        if (fieldErrors.isNotEmpty) {
+                          setLocal(() {});
+                          showPmsSnack(context, fieldErrors.values.first, error: true);
+                          return;
                         }
                         final payload = widget.buildPayload != null
                             ? widget.buildPayload!(controllers, extras)
@@ -245,11 +243,20 @@ class _MasterCrudScreenState extends State<MasterCrudScreen> {
                           } else {
                             await widget.api.create(payload);
                           }
+                          if (!context.mounted) return;
+                          await showSavedConfirmation(
+                            context,
+                            isEdit ? '${widget.title} updated' : '${widget.title} created',
+                          );
                           if (ctx.mounted) Navigator.pop(ctx, true);
                         } on ApiException catch (e) {
-                          if (context.mounted) {
-                            showPmsSnack(context, e.message, error: true);
-                          }
+                          if (!context.mounted) return;
+                          setLocal(() {
+                            fieldErrors
+                              ..clear()
+                              ..addAll(apiFieldErrors(e));
+                          });
+                          showPmsSnack(context, formatApiErrorSummary(e), error: true);
                         }
                       },
                       child: Text(isEdit ? 'Save' : 'Create'),
