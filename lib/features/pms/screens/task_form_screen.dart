@@ -41,6 +41,7 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
 
   String _priority = 'medium';
   String _status = 'not_started';
+  String _loadedStatus = 'not_started';
   DateTime? _startDate;
   DateTime? _dueDate;
 
@@ -117,12 +118,14 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
         _descCtrl.text = task['description']?.toString() ?? '';
         _priority = task['priority']?.toString() ?? 'medium';
         final status = task['status']?.toString() ?? 'not_started';
-        _status = ['completion_requested', 'completed', 'pending_approval']
-                .contains(status)
-            ? 'in_progress'
-            : (PmsConstants.taskSettableStatuses.any((s) => s.$1 == status)
-                ? status
-                : 'not_started');
+        _loadedStatus = status;
+        _status = status == 'completed'
+            ? 'completed'
+            : (['completion_requested', 'pending_approval'].contains(status)
+                ? 'in_progress'
+                : (PmsConstants.taskSettableStatuses.any((s) => s.$1 == status)
+                    ? status
+                    : 'not_started'));
         _projectId = idOf(task['project']);
         _projectLabel = labelOf(task['project'], fallback: '');
         _parentId = idOf(task['parentTask'] ?? task['parent_task']);
@@ -255,13 +258,14 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
       final api = context.read<PmsServices>().tasks;
       final files = _files.map((f) => f.toEntry()).toList();
       if (widget.isEdit) {
+        final markDone = _status == 'completed' && _loadedStatus != 'completed';
         await api.update(
           widget.taskId!,
           {
             'title': _titleCtrl.text.trim(),
             'description': _descCtrl.text.trim(),
             'priority': _priority,
-            'status': _status,
+            if (_status != 'completed') 'status': _status,
             'start_date': _iso(_startDate),
             'due_date': _iso(_dueDate),
             'coordinator': _coordinatorId,
@@ -271,6 +275,7 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
           },
           files: files,
         );
+        if (markDone) await api.markComplete(widget.taskId!);
       } else {
         await api.create(
           {
@@ -396,11 +401,14 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
                   ),
                   const SizedBox(height: 12),
                   DropdownButtonFormField<String>(
+                    key: ValueKey('status-$_status-${widget.isEdit}'),
                     initialValue: _status,
                     decoration: const InputDecoration(labelText: 'Status'),
                     items: [
                       for (final s in PmsConstants.taskSettableStatuses)
                         DropdownMenuItem(value: s.$1, child: Text(s.$2)),
+                      if (widget.isEdit)
+                        const DropdownMenuItem(value: 'completed', child: Text('Complete')),
                     ],
                     onChanged: (v) => setState(() => _status = v ?? _status),
                   ),

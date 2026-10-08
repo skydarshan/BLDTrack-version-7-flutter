@@ -75,6 +75,32 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
     }
   }
 
+  bool get _projectArchived {
+    final project = _task?['project'];
+    if (project is Map) return project['status']?.toString() == 'archived';
+    return false;
+  }
+
+  Future<void> _sendComment() async {
+    if (_projectArchived) {
+      showPmsSnack(context, 'Cannot comment on a task in an archived project', error: true);
+      return;
+    }
+    final text = _commentCtrl.text.trim();
+    if (text.isEmpty) return;
+    try {
+      await context.read<PmsServices>().tasks.addComment(
+        widget.taskId,
+        {'body': text},
+      );
+      if (!mounted) return;
+      _commentCtrl.clear();
+      await _load();
+    } on ApiException catch (e) {
+      if (mounted) showPmsSnack(context, e.message, error: true);
+    }
+  }
+
   Future<void> _logProgress() async {
     final valueCtrl = TextEditingController();
     final remarksCtrl = TextEditingController();
@@ -228,6 +254,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                 .map((m) => labelOf(m))
                 .toList()
             : <String>[];
+    var memberError = '';
     final reasonCtrl = TextEditingController();
 
     final ok = await showModalBottomSheet<bool>(
@@ -238,61 +265,104 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
           builder: (context, setModal) {
             return Padding(
               padding: AppTheme.sheetPadding(ctx),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const Text(
-                    'Update assignment',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
-                  ),
-                  const SizedBox(height: 12),
-                  PickerField(
-                    label: 'Coordinator',
-                    valueLabel: coordinatorLabel,
-                    onTap: () async {
-                      final picked = await showOptionPicker(
-                        context,
-                        title: 'Coordinator',
-                        options: _users,
-                        selected: coordinatorId,
-                      );
-                      if (picked == null) return;
-                      setModal(() {
-                        coordinatorId = picked.value;
-                        coordinatorLabel = picked.label;
-                      });
-                    },
-                  ),
-                  const SizedBox(height: 12),
-                  PickerField(
-                    label: 'Add member',
-                    valueLabel: memberLabels.join(', '),
-                    onTap: () async {
-                      final picked = await showOptionPicker(
-                        context,
-                        title: 'Member',
-                        options: _users,
-                      );
-                      if (picked == null) return;
-                      if (memberIds.contains(picked.value)) return;
-                      setModal(() {
-                        memberIds = [...memberIds, picked.value];
-                        memberLabels = [...memberLabels, picked.label];
-                      });
-                    },
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: reasonCtrl,
-                    decoration: const InputDecoration(labelText: 'Reason'),
-                  ),
-                  const SizedBox(height: 16),
-                  FilledButton(
-                    onPressed: () => Navigator.pop(ctx, true),
-                    child: const Text('Save'),
-                  ),
-                ],
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const Text(
+                      'Update assignment',
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                    ),
+                    const SizedBox(height: 12),
+                    PickerField(
+                      label: 'Coordinator',
+                      valueLabel: coordinatorLabel,
+                      onTap: () async {
+                        final picked = await showOptionPicker(
+                          context,
+                          title: 'Coordinator',
+                          options: _users,
+                          selected: coordinatorId,
+                        );
+                        if (picked == null) return;
+                        setModal(() {
+                          coordinatorId = picked.value;
+                          coordinatorLabel = picked.label;
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    PickerField(
+                      label: 'Add member',
+                      valueLabel: memberIds.isEmpty ? '' : '${memberIds.length} selected',
+                      onTap: () async {
+                        final picked = await showOptionPicker(
+                          context,
+                          title: 'Member',
+                          options: _users,
+                        );
+                        if (picked == null) return;
+                        if (memberIds.contains(picked.value)) return;
+                        setModal(() {
+                          memberIds = [...memberIds, picked.value];
+                          memberLabels = [...memberLabels, picked.label];
+                          memberError = '';
+                        });
+                      },
+                    ),
+                    if (memberIds.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
+                        children: [
+                          for (var i = 0; i < memberIds.length; i++)
+                            InputChip(
+                              label: Text(
+                                i < memberLabels.length && memberLabels[i].trim().isNotEmpty
+                                    ? memberLabels[i]
+                                    : 'Member',
+                              ),
+                              onDeleted: () {
+                                if (memberIds.length <= 1) {
+                                  setModal(() => memberError = 'Assign at least one member');
+                                  return;
+                                }
+                                setModal(() {
+                                  memberIds = [...memberIds]..removeAt(i);
+                                  if (i < memberLabels.length) {
+                                    memberLabels = [...memberLabels]..removeAt(i);
+                                  }
+                                  memberError = '';
+                                });
+                              },
+                            ),
+                        ],
+                      ),
+                    ],
+                    if (memberError.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Text(memberError, style: TextStyle(color: Theme.of(ctx).colorScheme.error)),
+                    ],
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: reasonCtrl,
+                      decoration: const InputDecoration(labelText: 'Reason'),
+                    ),
+                    const SizedBox(height: 16),
+                    FilledButton(
+                      onPressed: () {
+                        if (memberIds.isEmpty) {
+                          setModal(() => memberError = 'Assign at least one member');
+                          return;
+                        }
+                        Navigator.pop(ctx, true);
+                      },
+                      child: const Text('Save'),
+                    ),
+                  ],
+                ),
               ),
             );
           },
@@ -613,24 +683,16 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                           Expanded(
                             child: TextField(
                               controller: _commentCtrl,
-                              decoration: const InputDecoration(hintText: 'Add a comment'),
+                              enabled: !_projectArchived,
+                              decoration: InputDecoration(
+                                hintText: _projectArchived
+                                    ? 'Project is archived'
+                                    : 'Add a comment',
+                              ),
                             ),
                           ),
                           IconButton(
-                            onPressed: () async {
-                              final text = _commentCtrl.text.trim();
-                              if (text.isEmpty) return;
-                              try {
-                                await context.read<PmsServices>().tasks.addComment(
-                                  widget.taskId,
-                                  {'body': text},
-                                );
-                                _commentCtrl.clear();
-                                _load();
-                              } on ApiException catch (e) {
-                                showPmsSnack(context, e.message, error: true);
-                              }
-                            },
+                            onPressed: _projectArchived ? null : _sendComment,
                             icon: const Icon(Icons.send),
                           ),
                         ],

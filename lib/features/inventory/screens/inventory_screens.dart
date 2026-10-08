@@ -10,6 +10,7 @@ import '../../../core/utils/list_query.dart';
 import '../../../core/theme/modern_widgets.dart';
 import '../../app/app_services.dart';
 import '../../app/app_shell.dart';
+import '../../auth/providers/auth_provider.dart';
 import '../../pms/utils/site_options.dart';
 import '../../pms/widgets/pickers.dart';
 import '../../pms/widgets/pms_widgets.dart';
@@ -159,13 +160,37 @@ class _ImrListScreenState extends State<ImrListScreen> {
   String? _error;
   List<Map<String, dynamic>> _items = [];
   Map<String, dynamic>? _pagination;
-  String _search = '';
+  List<Map<String, dynamic>> _sites = [];
+  String _inventoryType = '';
+  String? _siteId;
+  String _siteLabel = '';
+  DateTime? _date;
+  String _draftType = '';
+  String? _draftSiteId;
+  String _draftSiteLabel = '';
+  DateTime? _draftDate;
   int _page = 1;
+
+  bool get _hasFilters => _inventoryType.isNotEmpty || _siteId != null || _date != null;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await _loadSites();
+      if (mounted) await _load();
+    });
+  }
+
+  Future<void> _loadSites() async {
+    try {
+      final rows = await context.read<SettingsApis>().sites.listAll({
+        'sortBy': 'site_name',
+        'sortOrder': 'asc',
+      });
+      if (!mounted) return;
+      setState(() => _sites = rows);
+    } catch (_) {}
   }
 
   Future<void> _load() async {
@@ -173,11 +198,16 @@ class _ImrListScreenState extends State<ImrListScreen> {
       _loading = true;
       _error = null;
     });
+    final issueDate = isoDateOnly(_date);
+    final issueDateTo = issueDate == null ? null : '$issueDate~';
     try {
       final res = await context.read<AppServices>().inventory.listImr({
         'page': _page,
         'limit': 20,
-        if (_search.isNotEmpty) 'search': _search,
+        if (_inventoryType.isNotEmpty) 'inventoryType': _inventoryType,
+        'site_id': ?_siteId,
+        'issue_Date_from': ?issueDate,
+        'issue_Date_to': ?issueDateTo,
       });
       if (!mounted) return;
       setState(() {
@@ -200,89 +230,233 @@ class _ImrListScreenState extends State<ImrListScreen> {
     }
   }
 
+  void _applyFilters() {
+    setState(() {
+      _inventoryType = _draftType;
+      _siteId = _draftSiteId;
+      _siteLabel = _draftSiteLabel;
+      _date = _draftDate;
+      _page = 1;
+    });
+    _load();
+  }
+
+  void _resetFilters() {
+    setState(() {
+      _inventoryType = '';
+      _siteId = null;
+      _siteLabel = '';
+      _date = null;
+      _draftType = '';
+      _draftSiteId = null;
+      _draftSiteLabel = '';
+      _draftDate = null;
+      _page = 1;
+    });
+    _load();
+  }
+
+  Future<void> _openFilters() async {
+    _draftType = _inventoryType;
+    _draftSiteId = _siteId;
+    _draftSiteLabel = _siteLabel;
+    _draftDate = _date;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetContext) {
+        return Padding(
+          padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(sheetContext).bottom),
+          child: StatefulBuilder(
+            builder: (context, setSheet) {
+              return SafeArea(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Row(
+                        children: [
+                          const Expanded(
+                            child: Text('Filters', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+                          ),
+                          IconButton(
+                            tooltip: 'Close',
+                            onPressed: () => Navigator.pop(sheetContext),
+                            icon: const Icon(Icons.close),
+                          ),
+                        ],
+                      ),
+                      DropdownButtonFormField<String>(
+                        key: ValueKey('imr-type-$_draftType'),
+                        initialValue: _draftType,
+                        decoration: const InputDecoration(labelText: 'Inventory type'),
+                        items: const [
+                          DropdownMenuItem(value: '', child: Text('All inventory types')),
+                          DropdownMenuItem(value: 'Project BOQ', child: Text('Project BOQ')),
+                          DropdownMenuItem(value: 'Site Establishment', child: Text('Site Establishment')),
+                          DropdownMenuItem(value: 'Assets', child: Text('Assets')),
+                        ],
+                        onChanged: (v) => setSheet(() => _draftType = v ?? ''),
+                      ),
+                      const SizedBox(height: 12),
+                      PickerField(
+                        label: 'Select sites',
+                        hint: 'All sites — search...',
+                        valueLabel: _draftSiteLabel,
+                        onTap: () async {
+                          final picked = await showOptionPicker(
+                            sheetContext,
+                            title: 'Select sites',
+                            options: [
+                              const OptionItem(value: '', label: 'All sites'),
+                              ...mapToOptions(
+                                _sites,
+                                labelOfRow: (r) => r['site_name']?.toString() ?? labelOf(r),
+                              ),
+                            ],
+                            selected: _draftSiteId,
+                          );
+                          if (picked == null) return;
+                          setSheet(() {
+                            if (picked.value.isEmpty) {
+                              _draftSiteId = null;
+                              _draftSiteLabel = '';
+                            } else {
+                              _draftSiteId = picked.value;
+                              _draftSiteLabel = picked.label;
+                            }
+                          });
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      const Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text('Issue date'),
+                      ),
+                      const SizedBox(height: 4),
+                      OutlinedButton.icon(
+                        onPressed: () async {
+                          final picked = await showDatePicker(
+                            context: sheetContext,
+                            initialDate: _draftDate ?? DateTime.now(),
+                            firstDate: DateTime(2020),
+                            lastDate: DateTime(2100),
+                          );
+                          if (picked == null) return;
+                          setSheet(() => _draftDate = picked);
+                        },
+                        icon: const Icon(Icons.calendar_today_outlined, size: 18),
+                        label: Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            _draftDate == null ? 'DD/MM/YYYY' : formatDate(_draftDate!.toIso8601String()),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      FilledButton(
+                        onPressed: () {
+                          _applyFilters();
+                          Navigator.pop(sheetContext);
+                        },
+                        child: const Text('Apply'),
+                      ),
+                      const SizedBox(height: 8),
+                      OutlinedButton(
+                        onPressed: () {
+                          _resetFilters();
+                          Navigator.pop(sheetContext);
+                        },
+                        child: const Text('Reset'),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final pages = paginationTotalPages(_pagination);
     return Scaffold(
-      appBar: AppBar(title: const Text('Issued material'), actions: const [WorkspaceSwitcherButton()]),
+      appBar: AppBar(
+        title: const Text('Issued material'),
+        actions: [
+          IconButton(
+            tooltip: 'Filters',
+            onPressed: _openFilters,
+            icon: Badge(
+              isLabelVisible: _hasFilters,
+              smallSize: 8,
+              child: const Icon(Icons.filter_list),
+            ),
+          ),
+          const WorkspaceSwitcherButton(),
+        ],
+      ),
       floatingActionButton: FloatingActionButton(
         onPressed: () => context.push('/inventory/imr/new'),
         child: const Icon(Icons.add),
       ),
-      body: Column(
-        children: [
-          Padding(
-            padding: AppTheme.searchPadding,
-            child: TextField(
-              decoration: const InputDecoration(
-                hintText: 'Search slip number…',
-                prefixIcon: Icon(Icons.search),
-              ),
-              onSubmitted: (v) {
-                setState(() {
-                  _search = v.trim();
-                  _page = 1;
-                });
-                _load();
-              },
-            ),
-          ),
-          Expanded(
-            child: RefreshIndicator(
-              onRefresh: _load,
-              child: _loading
-                  ? const CenteredScrollLoader()
-                  : _error != null
-                      ? ListView(
-                          padding: AppTheme.formPadding,
-                          children: [ErrorBanner(message: _error!, onRetry: _load)],
-                        )
-                      : _items.isEmpty
-                          ? EmptyListBody(
-                              message: listEmptyMessage(noun: 'issue slips', search: _search),
-                            )
-                          : ListView.separated(
-                              padding: AppTheme.formPadding,
-                              itemCount: _items.length + 1,
-                              separatorBuilder: (_, _) => const SizedBox(height: 8),
-                              itemBuilder: (context, i) {
-                                if (i == _items.length) {
-                                  return ListPaginationRow(
-                                    page: _page,
-                                    totalPages: pages,
-                                    onPrev: _page > 1
-                                        ? () {
-                                            setState(() => _page -= 1);
-                                            _load();
-                                          }
-                                        : null,
-                                    onNext: _page < pages
-                                        ? () {
-                                            setState(() => _page += 1);
-                                            _load();
-                                          }
-                                        : null,
-                                  );
-                                }
-                                final row = _items[i];
-                                return Card(
-                                  child: ListTile(
-                                    title: Text(row['issueSlip_number']?.toString() ?? 'Slip'),
-                                    subtitle: Text('${labelOf(row['site_id'] ?? row['site'])} · ${row['type'] ?? ''}'),
-                                    trailing: Text(formatDate(row['issue_Date'])),
-                                    onTap: () {
-                                      final id = idOf(row);
-                                      if (id != null) {
-                                        context.push('/inventory/imr/$id');
-                                      }
-                                    },
-                                  ),
-                                );
+      body: RefreshIndicator(
+        onRefresh: _load,
+        child: _loading
+            ? const CenteredScrollLoader()
+            : _error != null
+                ? ListView(
+                    padding: AppTheme.formPadding,
+                    children: [ErrorBanner(message: _error!, onRetry: _load)],
+                  )
+                : _items.isEmpty
+                    ? EmptyListBody(
+                        message: _hasFilters
+                            ? 'No issued material records found.'
+                            : listEmptyMessage(noun: 'issue slips'),
+                      )
+                    : ListView.separated(
+                        padding: AppTheme.formPadding,
+                        itemCount: _items.length + 1,
+                        separatorBuilder: (_, _) => const SizedBox(height: 8),
+                        itemBuilder: (context, i) {
+                          if (i == _items.length) {
+                            return ListPaginationRow(
+                              page: _page,
+                              totalPages: pages,
+                              onPrev: _page > 1
+                                  ? () {
+                                      setState(() => _page -= 1);
+                                      _load();
+                                    }
+                                  : null,
+                              onNext: _page < pages
+                                  ? () {
+                                      setState(() => _page += 1);
+                                      _load();
+                                    }
+                                  : null,
+                            );
+                          }
+                          final row = _items[i];
+                          return Card(
+                            child: ListTile(
+                              title: Text(row['issueSlip_number']?.toString() ?? 'Slip'),
+                              subtitle: Text('${labelOf(row['site_id'] ?? row['site'])} · ${row['inventoryType'] ?? row['type'] ?? ''}'),
+                              trailing: Text(formatDate(row['issue_Date'])),
+                              onTap: () {
+                                final id = idOf(row);
+                                if (id != null) context.push('/inventory/imr/$id');
                               },
                             ),
-            ),
-          ),
-        ],
+                          );
+                        },
+                      ),
       ),
     );
   }
@@ -357,6 +531,21 @@ class _ImrDetailScreenState extends State<ImrDetailScreen> {
   }
 }
 
+class _IssueLine {
+  String? itemId;
+  String itemLabel = '';
+  String itemCode = '—';
+  String uom = '—';
+  num available = 0;
+  final qty = TextEditingController();
+  final remarks = TextEditingController();
+
+  void dispose() {
+    qty.dispose();
+    remarks.dispose();
+  }
+}
+
 class ImrCreateScreen extends StatefulWidget {
   const ImrCreateScreen({super.key});
 
@@ -371,31 +560,44 @@ class _ImrCreateScreenState extends State<ImrCreateScreen> {
   String _inventoryType = 'Project BOQ';
   String? _authorizedBy;
   String _authLabel = '';
+  String _staffName = '—';
+  String _empId = '—';
+  String _staffRole = '—';
   String? _receivedBy;
-  String _recvLabel = '';
+  String _contractorName = '—';
+  String _contactPerson = '—';
+  String _contractorCode = '—';
   String _slip = '';
+  final _slipCtrl = TextEditingController();
+  final _dateCtrl = TextEditingController();
+  final _recvName = TextEditingController();
   final _wo = TextEditingController();
+  final List<_IssueLine> _lines = [_IssueLine()];
   List<Map<String, dynamic>> _sites = [];
-  List<Map<String, dynamic>> _users = [];
+  List<Map<String, dynamic>> _staff = [];
+  List<Map<String, dynamic>> _contractors = [];
   List<Map<String, dynamic>> _catalog = [];
-  String? _itemId;
-  String _itemLabel = '';
-  final _qty = TextEditingController(text: '1');
+  List<Map<String, dynamic>> _stock = [];
   bool _saving = false;
+  bool _loadingStock = false;
   final _fieldErrors = FieldErrors();
+  final DateTime _issueDate = DateTime.now();
 
   @override
   void initState() {
     super.initState();
+    _dateCtrl.text = _displayDate(_issueDate);
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       final s = context.read<SettingsApis>();
       final sites = await s.sites.listAll({'sortBy': 'site_name', 'sortOrder': 'asc'});
-      final users = await s.users.listAll({'sortBy': 'name', 'sortOrder': 'asc'});
+      final staff = await s.siteStaff.listAll({'sortBy': 'name', 'sortOrder': 'asc'});
+      final contractors = await s.contractors.listAll({'sortBy': 'name', 'sortOrder': 'asc'});
       final items = await s.items.listAll({'sortBy': 'item_name', 'sortOrder': 'asc'});
       if (!mounted) return;
       setState(() {
         _sites = sites;
-        _users = users;
+        _staff = staff;
+        _contractors = contractors;
         _catalog = items;
       });
     });
@@ -403,9 +605,129 @@ class _ImrCreateScreenState extends State<ImrCreateScreen> {
 
   @override
   void dispose() {
+    _slipCtrl.dispose();
+    _dateCtrl.dispose();
+    _recvName.dispose();
     _wo.dispose();
-    _qty.dispose();
+    for (final line in _lines) {
+      line.dispose();
+    }
     super.dispose();
+  }
+
+  String _displayDate(DateTime d) {
+    final dd = d.day.toString().padLeft(2, '0');
+    final mm = d.month.toString().padLeft(2, '0');
+    return '$dd-$mm-${d.year}';
+  }
+
+  String get _issueDateIso {
+    final mm = _issueDate.month.toString().padLeft(2, '0');
+    final dd = _issueDate.day.toString().padLeft(2, '0');
+    return '${_issueDate.year}-$mm-$dd';
+  }
+
+  bool _coversSite(Map<String, dynamic> row, String siteId) {
+    final sites = row['sites'];
+    if (sites is! List || sites.isEmpty) return false;
+    for (final site in sites) {
+      if (mongoId(site) == siteId || site.toString() == siteId) return true;
+    }
+    return false;
+  }
+
+  List<Map<String, dynamic>> _forSite(List<Map<String, dynamic>> rows) {
+    final siteId = _siteId;
+    if (siteId == null) return const [];
+    final matched = rows.where((row) => _coversSite(row, siteId)).toList();
+    return matched.isEmpty ? rows : matched;
+  }
+
+  String _formatIssueSlip(String siteCode, dynamic raw) {
+    final text = raw?.toString().trim() ?? '';
+    if (text.isEmpty) return '';
+    if (text.contains('/')) return text;
+    final n = num.tryParse(text);
+    if (n == null) return text;
+    final code = siteCode.trim().isEmpty ? 'SITE' : siteCode.trim();
+    return '$code/${n.toInt().toString().padLeft(5, '0')}';
+  }
+
+  Map<String, dynamic>? _catalogById(String? id) {
+    if (id == null) return null;
+    for (final row in _catalog) {
+      if (idOf(row) == id) return row;
+    }
+    return null;
+  }
+
+  num _availableFor(String? itemId) {
+    if (itemId == null) return 0;
+    for (final row in _stock) {
+      final id = mongoId(row['item_id']) ?? mongoId(row['item']);
+      if (id == itemId) return asNum(row['availableStock']) ?? 0;
+    }
+    return 0;
+  }
+
+  void _applyItem(int index, OptionItem picked) {
+    final line = _lines[index];
+    final item = picked.raw ?? _catalogById(picked.value);
+    line.itemId = picked.value;
+    line.itemLabel = picked.label;
+    line.itemCode = item?['item_code']?.toString().trim().isNotEmpty == true
+        ? item!['item_code'].toString()
+        : '—';
+    line.uom = item == null ? '—' : labelOf(item['uom'], fallback: '—');
+    line.available = _availableFor(picked.value);
+  }
+
+  Future<void> _loadSlip(String siteId, String siteCode) async {
+    try {
+      final n = await context.read<AppServices>().inventory.nextSlipNumber(siteId);
+      if (!mounted) return;
+      final raw = n['next_slip_number'] ?? n['issueSlip_number'] ?? n['number'] ?? n['next'];
+      final formatted = _formatIssueSlip(siteCode, raw);
+      _slipCtrl.text = formatted;
+      setState(() => _slip = formatted);
+      if (formatted.isEmpty) {
+        showPmsSnack(context, 'Could not fetch the next slip number', error: true);
+      }
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      _slipCtrl.text = '';
+      setState(() => _slip = '');
+      showPmsSnack(context, e.message, error: true);
+    }
+  }
+
+  Future<void> _reloadStock() async {
+    if (_siteId == null) {
+      setState(() => _stock = []);
+      return;
+    }
+    setState(() => _loadingStock = true);
+    try {
+      final rows = await context.read<AppServices>().inventory.availableStock({
+        'site_id': _siteId,
+        'inventoryType': _inventoryType,
+      });
+      if (!mounted) return;
+      setState(() {
+        _stock = rows;
+        _loadingStock = false;
+        for (final line in _lines) {
+          line.available = _availableFor(line.itemId);
+        }
+      });
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _stock = [];
+        _loadingStock = false;
+      });
+      showPmsSnack(context, e.message, error: true);
+    }
   }
 
   Future<void> _save() async {
@@ -414,7 +736,22 @@ class _ImrCreateScreenState extends State<ImrCreateScreen> {
     _fieldErrors.set('slip', _slip.trim().isEmpty ? 'Issue slip number is required — pick the site again' : null);
     _fieldErrors.set('authorized', requiredSelection(_authorizedBy, 'Authorized by'));
     _fieldErrors.set('received', requiredSelection(_receivedBy, 'Received by'));
-    _fieldErrors.set('item', requiredSelection(_itemId, 'Item'));
+    _fieldErrors.set('recvName', requiredText(_recvName.text, 'Received by name'));
+    final used = _lines.where((line) => (line.itemId ?? '').isNotEmpty).toList();
+    if (used.isEmpty) {
+      _fieldErrors.set('items', 'Add at least one item');
+    }
+    for (var i = 0; i < _lines.length; i++) {
+      final line = _lines[i];
+      if ((line.itemId ?? '').isEmpty) continue;
+      final qty = num.tryParse(line.qty.text.trim());
+      if (qty == null || qty <= 0) {
+        _fieldErrors.set('qty$i', 'Issued quantity is required');
+      } else if (qty > line.available) {
+        final name = line.itemLabel.trim().isEmpty ? 'This item' : line.itemLabel.trim();
+        _fieldErrors.set('qty$i', '$name: only ${_qtyLabel(line.available)} available');
+      }
+    }
     if (_fieldErrors.hasErrors) {
       setState(() {});
       showPmsSnack(context, _fieldErrors.messages.first, error: true);
@@ -427,16 +764,18 @@ class _ImrCreateScreenState extends State<ImrCreateScreen> {
         'issueSlip_number': _slip,
         'type': _type,
         'inventoryType': _inventoryType,
-        'issue_Date': DateTime.now().toIso8601String().substring(0, 10),
+        'issue_Date': _issueDateIso,
         'authorizedBy': _authorizedBy,
         'receivedBy': _receivedBy,
-        'receivedByName': _recvLabel,
+        'receivedByName': _recvName.text.trim(),
         'wo_number': _wo.text.trim(),
         'items': [
-          {
-            'item_id': _itemId,
-            'issued_Qty': num.tryParse(_qty.text) ?? 1,
-          }
+          for (final line in used)
+            {
+              'item_id': line.itemId,
+              'issued_Qty': num.tryParse(line.qty.text.trim()) ?? 0,
+              if (line.remarks.text.trim().isNotEmpty) 'remarks': line.remarks.text.trim(),
+            },
         ],
       });
       if (!mounted) return;
@@ -449,29 +788,98 @@ class _ImrCreateScreenState extends State<ImrCreateScreen> {
           _fieldErrors.set(entry.key, entry.value);
         }
       });
-      showPmsSnack(context, formatApiErrorSummary(e), error: true);
+      showPmsSnack(context, _withItemNames(formatApiErrorSummary(e)), error: true);
     } finally {
       if (mounted) setState(() => _saving = false);
     }
   }
 
+  String _withItemNames(String message) {
+    var text = message;
+    for (final line in _lines) {
+      final id = line.itemId;
+      if (id == null || id.isEmpty || !text.contains(id)) continue;
+      final name = line.itemLabel.trim().isEmpty ? 'this item' : line.itemLabel.trim();
+      text = text.replaceAll('item $id', name).replaceAll(id, name);
+    }
+    return text;
+  }
+
+  String _qtyLabel(num value) {
+    if (value == value.roundToDouble()) return value.toInt().toString();
+    return value.toString();
+  }
+
+  Widget _infoBox(String label, String value, {int flex = 1}) {
+    return Expanded(
+      flex: flex,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF3F4F6),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: const Color(0xFFE5E7EB)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: AppTheme.muted,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              value.trim().isEmpty ? '—' : value,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _section(String title, List<Widget> children) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
+            const SizedBox(height: 8),
+            ...children,
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final user = context.watch<AuthProvider>().user;
     return Scaffold(
-      appBar: AppBar(title: const Text('Issue material')),
+      appBar: AppBar(title: const Text('Materials Requisition / Issue Slip')),
       body: ListView(
         padding: AppTheme.formPadding,
         children: [
           if (_fieldErrors.hasErrors) ValidationSummaryBanner(messages: _fieldErrors.messages),
           PickerField(
-            label: 'Site',
+            label: 'Site / Project Name',
             required: true,
             valueLabel: _siteLabel,
             errorText: _fieldErrors['site'],
             onTap: () async {
               final p = await showOptionPicker(
                 context,
-                title: 'Site',
+                title: 'Site / Project Name',
                 options: mapToOptions(_sites, labelOfRow: (r) => r['site_name']?.toString() ?? labelOf(r)),
                 selected: _siteId,
               );
@@ -479,113 +887,284 @@ class _ImrCreateScreenState extends State<ImrCreateScreen> {
               setState(() {
                 _siteId = p.value;
                 _siteLabel = p.label;
+                _authorizedBy = null;
+                _authLabel = '';
+                _staffName = '—';
+                _empId = '—';
+                _staffRole = '—';
+                _receivedBy = null;
+                _contractorName = '—';
+                _contactPerson = '—';
+                _contractorCode = '—';
+                _recvName.clear();
               });
-              try {
-                final n = await context.read<AppServices>().inventory.nextSlipNumber(p.value);
-                if (!mounted) return;
-                setState(() => _slip = '${n['issueSlip_number'] ?? n['number'] ?? n['next'] ?? ''}');
-                if (_slip.isEmpty) {
-                  showPmsSnack(context, 'Could not fetch the next slip number', error: true);
-                }
-              } on ApiException catch (e) {
-                if (mounted) {
-                  setState(() => _slip = '');
-                  showPmsSnack(context, e.message, error: true);
-                }
-              }
+              await _loadSlip(p.value, p.raw?['code']?.toString() ?? '');
+              await _reloadStock();
             },
           ),
-          const SizedBox(height: 8),
-          Text('Slip: ${_slip.isEmpty ? '—' : _slip}', style: const TextStyle(color: Colors.grey)),
-          if (_fieldErrors['slip'] != null)
-            Text(_fieldErrors['slip']!, style: const TextStyle(color: AppTheme.danger, fontSize: 12)),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _slipCtrl,
+            readOnly: true,
+            decoration: InputDecoration(
+              labelText: 'Issue Slip No.',
+              hintText: 'Select a site',
+              errorText: _fieldErrors['slip'],
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _dateCtrl,
+            readOnly: true,
+            decoration: const InputDecoration(labelText: 'Date'),
+          ),
           const SizedBox(height: 12),
           DropdownButtonFormField<String>(
+            key: ValueKey('type-$_type'),
             initialValue: _type,
-            decoration: const InputDecoration(labelText: 'Type'),
+            decoration: const InputDecoration(labelText: 'Select type *'),
             items: const [
-              DropdownMenuItem(value: 'non-returnable', child: Text('Non-returnable')),
-              DropdownMenuItem(value: 'returnable', child: Text('Returnable')),
+              DropdownMenuItem(value: 'non-returnable', child: Text('NON-RETURNABLE')),
+              DropdownMenuItem(value: 'returnable', child: Text('RETURNABLE')),
             ],
             onChanged: (v) => setState(() => _type = v ?? _type),
           ),
           const SizedBox(height: 12),
           DropdownButtonFormField<String>(
+            key: ValueKey('use-$_inventoryType'),
             initialValue: _inventoryType,
-            decoration: const InputDecoration(labelText: 'Inventory type'),
+            decoration: const InputDecoration(labelText: 'Select Use Type *'),
             items: const [
               DropdownMenuItem(value: 'Project BOQ', child: Text('Project BOQ')),
               DropdownMenuItem(value: 'Site Establishment', child: Text('Site Establishment')),
               DropdownMenuItem(value: 'Assets', child: Text('Assets')),
             ],
-            onChanged: (v) => setState(() => _inventoryType = v ?? _inventoryType),
-          ),
-          const SizedBox(height: 12),
-          PickerField(
-            label: 'Authorized by',
-            required: true,
-            valueLabel: _authLabel,
-            errorText: _fieldErrors['authorized'],
-            onTap: () async {
-              final p = await showOptionPicker(
-                context,
-                title: 'Authorized by',
-                options: mapToOptions(_users),
-                selected: _authorizedBy,
-              );
-              if (p == null) return;
-              setState(() {
-                _authorizedBy = p.value;
-                _authLabel = p.label;
-              });
+            onChanged: (v) async {
+              setState(() => _inventoryType = v ?? _inventoryType);
+              await _reloadStock();
             },
           ),
-          const SizedBox(height: 12),
-          PickerField(
-            label: 'Received by',
-            required: true,
-            valueLabel: _recvLabel,
-            errorText: _fieldErrors['received'],
-            onTap: () async {
-              final p = await showOptionPicker(
-                context,
-                title: 'Received by',
-                options: mapToOptions(_users),
-                selected: _receivedBy,
-              );
-              if (p == null) return;
-              setState(() {
-                _receivedBy = p.value;
-                _recvLabel = p.label;
-              });
-            },
-          ),
-          const SizedBox(height: 12),
-          PickerField(
-            label: 'Item',
-            required: true,
-            valueLabel: _itemLabel,
-            errorText: _fieldErrors['item'],
-            onTap: () async {
-              final p = await showOptionPicker(
-                context,
-                title: 'Item',
-                options: mapToOptions(_catalog, labelOfRow: (r) => r['item_name']?.toString() ?? labelOf(r)),
-                selected: _itemId,
-              );
-              if (p == null) return;
-              setState(() {
-                _itemId = p.value;
-                _itemLabel = p.label;
-              });
-            },
-          ),
-          const SizedBox(height: 12),
-          TextField(controller: _qty, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Qty')),
-          const SizedBox(height: 12),
-          TextField(controller: _wo, decoration: const InputDecoration(labelText: 'WO number')),
           const SizedBox(height: 16),
-          FilledButton(onPressed: _saving ? null : _save, child: Text(_saving ? 'Saving…' : 'Create slip')),
+          for (var i = 0; i < _lines.length; i++) ...[
+            _section('Item ${i + 1}', [
+              PickerField(
+                label: 'Item Name',
+                required: true,
+                valueLabel: _lines[i].itemLabel,
+                errorText: _fieldErrors['items'],
+                onTap: () async {
+                  final p = await showOptionPicker(
+                    context,
+                    title: 'Select item',
+                    options: mapToOptions(
+                      _catalog,
+                      labelOfRow: (r) => r['item_name']?.toString() ?? labelOf(r),
+                    ),
+                    selected: _lines[i].itemId,
+                  );
+                  if (p == null) return;
+                  setState(() => _applyItem(i, p));
+                },
+              ),
+              const SizedBox(height: 10),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _infoBox(
+                    'Item Code',
+                    _lines[i].itemId == null ? '—' : _lines[i].itemCode,
+                    flex: 3,
+                  ),
+                  const SizedBox(width: 8),
+                  _infoBox('UOM', _lines[i].itemId == null ? '—' : _lines[i].uom, flex: 2),
+                  const SizedBox(width: 8),
+                  _infoBox(
+                    'Available Qty',
+                    _lines[i].itemId == null
+                        ? '—'
+                        : (_loadingStock ? '…' : _qtyLabel(_lines[i].available)),
+                    flex: 3,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _lines[i].qty,
+                enabled: _lines[i].itemId != null,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: InputDecoration(
+                  labelText: 'Issued Quantity',
+                  errorText: _fieldErrors['qty$i'],
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _lines[i].remarks,
+                decoration: const InputDecoration(labelText: 'Remarks'),
+              ),
+              Align(
+                alignment: Alignment.centerRight,
+                child: IconButton(
+                  tooltip: 'Remove item',
+                  onPressed: _lines.length == 1
+                      ? null
+                      : () {
+                          final removed = _lines.removeAt(i);
+                          removed.dispose();
+                          setState(() {});
+                        },
+                  icon: const Icon(Icons.delete_outline),
+                ),
+              ),
+            ]),
+            const SizedBox(height: 8),
+          ],
+          OutlinedButton.icon(
+            onPressed: () => setState(() => _lines.add(_IssueLine())),
+            icon: const Icon(Icons.add),
+            label: const Text('Add Item +'),
+          ),
+          const SizedBox(height: 16),
+          _section('Authorized By *', [
+            PickerField(
+              label: 'Select authorized by',
+              required: true,
+              valueLabel: _authLabel,
+              errorText: _fieldErrors['authorized'],
+              onTap: () async {
+                if (_siteId == null) {
+                  showPmsSnack(context, 'Select a site first', error: true);
+                  return;
+                }
+                final p = await showOptionPicker(
+                  context,
+                  title: 'Select authorized by',
+                  options: mapToOptions(_forSite(_staff), labelOfRow: (r) => r['name']?.toString() ?? labelOf(r)),
+                  selected: _authorizedBy,
+                  emptyMessage: 'No site staff found',
+                );
+                if (p == null) return;
+                final row = p.raw ?? const <String, dynamic>{};
+                setState(() {
+                  _authorizedBy = p.value;
+                  _authLabel = p.label;
+                  _staffName = row['name']?.toString() ?? p.label;
+                  _empId = row['employeeCode']?.toString() ?? '—';
+                  _staffRole = row['role']?.toString() ?? '—';
+                });
+              },
+            ),
+            const SizedBox(height: 10),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _infoBox('Name', _authorizedBy == null ? '—' : _staffName, flex: 3),
+                const SizedBox(width: 8),
+                _infoBox('Emp ID', _authorizedBy == null ? '—' : _empId, flex: 2),
+                const SizedBox(width: 8),
+                _infoBox('Designation', _authorizedBy == null ? '—' : _staffRole, flex: 3),
+              ],
+            ),
+          ]),
+          const SizedBox(height: 12),
+          _section('Received By *', [
+            PickerField(
+              label: 'Search contractor',
+              required: true,
+              valueLabel: _contractorName == '—' ? '' : _contractorName,
+              errorText: _fieldErrors['received'],
+              onTap: () async {
+                if (_siteId == null) {
+                  showPmsSnack(context, 'Select a site first', error: true);
+                  return;
+                }
+                final p = await showOptionPicker(
+                  context,
+                  title: 'Search contractor',
+                  options: mapToOptions(
+                    _forSite(_contractors),
+                    labelOfRow: (r) => r['name']?.toString() ?? labelOf(r),
+                  ),
+                  selected: _receivedBy,
+                  emptyMessage: 'No contractors found',
+                );
+                if (p == null) return;
+                final row = p.raw ?? const <String, dynamic>{};
+                final contact = row['contact_person']?.toString().trim() ?? '';
+                setState(() {
+                  _receivedBy = p.value;
+                  _contractorName = row['name']?.toString() ?? p.label;
+                  _contactPerson = contact.isEmpty ? '—' : contact;
+                  _contractorCode = row['code']?.toString().trim().isNotEmpty == true
+                      ? row['code'].toString()
+                      : '—';
+                  if (_recvName.text.trim().isEmpty) {
+                    _recvName.text = contact.isNotEmpty ? contact : _contractorName;
+                  }
+                });
+              },
+            ),
+            const SizedBox(height: 10),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  flex: 3,
+                  child: TextField(
+                    controller: _recvName,
+                    decoration: InputDecoration(
+                      labelText: 'Name *',
+                      errorText: _fieldErrors['recvName'],
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  flex: 2,
+                  child: TextField(
+                    controller: _wo,
+                    decoration: const InputDecoration(labelText: 'WO No'),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _infoBox('Contractor', _receivedBy == null ? '—' : _contractorName, flex: 3),
+                const SizedBox(width: 8),
+                _infoBox('Contact', _receivedBy == null ? '—' : _contactPerson, flex: 3),
+                const SizedBox(width: 8),
+                _infoBox('Code', _receivedBy == null ? '—' : _contractorCode, flex: 2),
+              ],
+            ),
+          ]),
+          const SizedBox(height: 12),
+          _section('Issued By', [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _infoBox('Name', user?.name ?? '—', flex: 2),
+                const SizedBox(width: 8),
+                _infoBox('Designation', user?.displayRole ?? '—', flex: 2),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                _infoBox('User ID', user?.id ?? '—'),
+              ],
+            ),
+          ]),
+          const SizedBox(height: 16),
+          Align(
+            alignment: Alignment.centerRight,
+            child: FilledButton(
+              onPressed: _saving ? null : _save,
+              child: Text(_saving ? 'Saving…' : 'Issue Material'),
+            ),
+          ),
         ],
       ),
     );
