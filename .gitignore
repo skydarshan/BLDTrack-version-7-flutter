@@ -55,6 +55,7 @@ app.*.map.json
 **/android/local.properties
 **/android/.gradle/
 **/android/captures/
+android/gradle-*-all.zip
 
 # iOS
 **/ios/**/Pods/
