@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/org/org_modules.dart';
+import '../../pms/widgets/pickers.dart';
 
 /// Shared editor for org product modules + optional approval workflows.
 ///
@@ -301,7 +302,7 @@ class _ApprovalBlock extends StatelessWidget {
         children: [
           Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
           const SizedBox(height: 8),
-          DropdownButtonFormField<int>(
+          AppDropdownFormField<int>(
             key: ValueKey('$title-steps'),
             initialValue: steps.clamp(0, 2),
             decoration: const InputDecoration(
@@ -420,7 +421,7 @@ class _ApproverFieldState extends State<_ApproverField> {
         .toSet();
     final selected = ids.contains(widget.value) ? widget.value : '';
 
-    return DropdownButtonFormField<String>(
+    return AppDropdownFormField<String>(
       key: ValueKey('${widget.label}-dropdown'),
       initialValue: selected.isEmpty ? '' : selected,
       decoration: InputDecoration(

@@ -7,13 +7,12 @@ import '../../../core/network/api_helpers.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/theme/modern_widgets.dart';
 import '../../app/app_shell.dart';
-import '../../auth/providers/auth_provider.dart';
 import '../services/pms_services.dart';
 import '../utils/site_options.dart';
 import '../widgets/pickers.dart';
 import '../widgets/pms_widgets.dart';
 
-/// Mobile PMS home — essentials only (charts / long status lists stay on web).
+/// Mobile PMS home â€” essentials only (charts / long status lists stay on web).
 class PmsHomeScreen extends StatefulWidget {
   const PmsHomeScreen({super.key});
 
@@ -94,6 +93,17 @@ class _PmsHomeScreenState extends State<PmsHomeScreen> {
     await _load();
   }
 
+  String _withSite(String path) {
+    if (_siteId == null || _siteId!.isEmpty) return path;
+    final uri = Uri.parse(path);
+    return uri
+        .replace(queryParameters: {
+          ...uri.queryParameters,
+          'site': _siteId!,
+        })
+        .toString();
+  }
+
   @override
   Widget build(BuildContext context) {
     final overview = _overview;
@@ -170,14 +180,7 @@ class _PmsHomeScreenState extends State<PmsHomeScreen> {
                   onPressed: _pickSite,
                   icon: const Icon(Icons.tune_rounded),
                 ),
-                IconButton(
-                  tooltip: 'Logout',
-                  onPressed: () async {
-                    await context.read<AuthProvider>().logout();
-                    if (context.mounted) context.go('/login');
-                  },
-                  icon: const Icon(Icons.logout_rounded),
-                ),
+                const UserProfileButton(),
               ],
               flexibleSpace: Container(
                 decoration: BoxDecoration(
@@ -210,8 +213,13 @@ class _PmsHomeScreenState extends State<PmsHomeScreen> {
                         ],
                         LayoutBuilder(
                           builder: (context, constraints) {
-                            final cardH =
-                                ((constraints.maxWidth - AppTheme.gridGap) / 2) * 0.78;
+                            // Original card proportion. On a wide window, height stays at the
+                            // phone size so the cards do not stretch and open a gap above
+                            // Overall progress. Width still fills the page.
+                            final measureWidth = constraints.maxWidth > 400
+                                ? 400.0
+                                : constraints.maxWidth;
+                            final cardH = ((measureWidth - AppTheme.gridGap) / 2) * 0.78;
                             Widget tile(Widget child) => Expanded(child: child);
                             return Column(
                               children: [
@@ -228,7 +236,7 @@ class _PmsHomeScreenState extends State<PmsHomeScreen> {
                                         value: '${projects?['total'] ?? 0}',
                                         icon: Icons.folder_special_rounded,
                                         color: AppTheme.info,
-                                        onTap: () => context.go('/pms/projects'),
+                                        onTap: () => context.go(_withSite('/pms/projects')),
                                       )),
                                       const SizedBox(width: AppTheme.gridGap),
                                       tile(BentoStatCard(
@@ -239,7 +247,7 @@ class _PmsHomeScreenState extends State<PmsHomeScreen> {
                                         value: '${tasks?['total'] ?? 0}',
                                         icon: Icons.task_alt_rounded,
                                         color: AppTheme.success,
-                                        onTap: () => context.go('/pms/tasks'),
+                                        onTap: () => context.go(_withSite('/pms/tasks')),
                                       )),
                                     ],
                                   ),
@@ -259,7 +267,7 @@ class _PmsHomeScreenState extends State<PmsHomeScreen> {
                                         icon: Icons.warning_amber_rounded,
                                         color: overdue > 0 ? AppTheme.danger : AppTheme.muted,
                                         highlight: overdue > 0,
-                                        onTap: () => context.go('/pms/tasks?mine=1'),
+                                        onTap: () => context.go(_withSite('/pms/tasks?mine=1')),
                                       )),
                                       const SizedBox(width: AppTheme.gridGap),
                                       tile(BentoStatCard(
@@ -269,7 +277,7 @@ class _PmsHomeScreenState extends State<PmsHomeScreen> {
                                         label: 'Approvals',
                                         value: '${ready + pending}',
                                         hint: pending > 0 || ready > 0
-                                            ? '$ready ready · $pending final'
+                                            ? '$ready ready Â· $pending final'
                                             : null,
                                         icon: Icons.verified_rounded,
                                         color: (ready + pending) > 0
@@ -285,13 +293,16 @@ class _PmsHomeScreenState extends State<PmsHomeScreen> {
                             );
                           },
                         ),
-                        if (avg != null) _ProgressStrip(percent: avg),
+                        if (avg != null) ...[
+                          const SizedBox(height: AppTheme.gridGap),
+                          _ProgressStrip(percent: avg),
+                        ],
                         const SizedBox(height: AppTheme.sectionGap),
                         SectionHeader(
                           title: 'Recent projects',
                           color: AppTheme.brand,
                           trailing: TextButton(
-                            onPressed: () => context.go('/pms/projects'),
+                            onPressed: () => context.go(_withSite('/pms/projects')),
                             child: const Text('See all'),
                           ),
                         ),
@@ -307,7 +318,7 @@ class _PmsHomeScreenState extends State<PmsHomeScreen> {
                               subtitle: [
                                 statusLabel(p['status']?.toString()),
                                 if (p['site'] != null) labelOf(p['site']),
-                              ].join(' · '),
+                              ].join(' Â· '),
                               icon: Icons.folder_special_rounded,
                               color: AppTheme.colorAt(i),
                               trailing: StatusChip(status: p['status']?.toString()),

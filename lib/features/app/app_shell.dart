@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/network/api_helpers.dart';
 import '../../core/org/org_modules.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/modern_widgets.dart';
+import '../auth/providers/auth_provider.dart';
 import '../org/org_session.dart';
 
 class AppShell extends StatelessWidget {
@@ -185,6 +187,285 @@ class WorkspaceSwitcherButton extends StatelessWidget {
         'project_management' => AppTheme.accent,
         _ => AppTheme.warning,
       };
+}
+
+class UserProfileButton extends StatelessWidget {
+  const UserProfileButton({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      tooltip: 'Profile',
+      onPressed: () => _showProfile(context),
+      icon: const Icon(Icons.account_circle_rounded),
+    );
+  }
+
+  Future<void> _showProfile(BuildContext context) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetContext) {
+        return _ProfileSheet(
+          onLogout: () async {
+            Navigator.pop(sheetContext);
+            await context.read<AuthProvider>().logout();
+            if (context.mounted) context.go('/login');
+          },
+        );
+      },
+    );
+  }
+}
+
+class _ProfileSheet extends StatefulWidget {
+  const _ProfileSheet({required this.onLogout});
+
+  final Future<void> Function() onLogout;
+
+  @override
+  State<_ProfileSheet> createState() => _ProfileSheetState();
+}
+
+class _ProfileSheetState extends State<_ProfileSheet> {
+  bool _detailsOpen = true;
+
+  String? _organisationLabel(dynamic organisation) {
+    if (organisation == null) return null;
+    if (organisation is Map) {
+      final name = organisation['organizationName'] ??
+          organisation['organisationName'] ??
+          organisation['name'];
+      final text = name?.toString().trim() ?? '';
+      if (text.isEmpty || looksLikeObjectId(text)) return null;
+      return text;
+    }
+    final text = organisation.toString().trim();
+    if (text.isEmpty || looksLikeObjectId(text)) return null;
+    return text;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final user = context.watch<AuthProvider>().user;
+    final name = (user?.name ?? '').trim();
+    final email = (user?.email ?? '').trim();
+    final role = (user?.displayRole ?? '').trim();
+    final org = _organisationLabel(user?.organisation);
+    final initial = name.isEmpty ? '?' : name.characters.first.toUpperCase();
+    final media = MediaQuery.of(context);
+    final wide = media.size.width >= 720;
+
+    return Padding(
+      padding: EdgeInsets.only(bottom: media.viewInsets.bottom),
+      child: SafeArea(
+        child: Align(
+          alignment: Alignment.bottomCenter,
+          heightFactor: 1,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: wide ? 480 : double.infinity),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+              child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Center(
+                  child: Container(
+                    width: 36,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: AppTheme.border,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                _ProfileHeader(
+                  initial: initial,
+                  name: name.isEmpty ? 'Signed in' : name,
+                  email: email,
+                  expanded: _detailsOpen,
+                  onTap: () => setState(() => _detailsOpen = !_detailsOpen),
+                ),
+                if (_detailsOpen) ...[
+                  const SizedBox(height: 10),
+                  _ProfileDetailTile(
+                    icon: Icons.badge_outlined,
+                    label: 'Role',
+                    value: role.isEmpty ? 'User' : role,
+                  ),
+                  const SizedBox(height: 8),
+                  _ProfileDetailTile(
+                    icon: Icons.mail_outline_rounded,
+                    label: 'Email',
+                    value: email.isEmpty ? 'Not available' : email,
+                  ),
+                  const SizedBox(height: 8),
+                  const _ProfileDetailTile(
+                    icon: Icons.verified_user_outlined,
+                    label: 'Account',
+                    value: 'Signed in',
+                    valueColor: AppTheme.success,
+                  ),
+                  if (org != null) ...[
+                    const SizedBox(height: 8),
+                    _ProfileDetailTile(
+                      icon: Icons.apartment_rounded,
+                      label: 'Organisation',
+                      value: org,
+                    ),
+                  ],
+                ],
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 12),
+                  child: Divider(height: 1),
+                ),
+                FilledButton.icon(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppTheme.danger,
+                    foregroundColor: Colors.white,
+                    minimumSize: const Size.fromHeight(48),
+                  ),
+                  onPressed: widget.onLogout,
+                  icon: const Icon(Icons.logout_rounded),
+                  label: const Text('Logout'),
+                ),
+              ],
+            ),
+          ),
+        ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ProfileHeader extends StatelessWidget {
+  const _ProfileHeader({
+    required this.initial,
+    required this.name,
+    required this.email,
+    required this.expanded,
+    required this.onTap,
+  });
+
+  final String initial;
+  final String name;
+  final String email;
+  final bool expanded;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: AppTheme.brandLight,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        hoverColor: AppTheme.brand.withValues(alpha: 0.08),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 12, 8, 12),
+          child: Row(
+            children: [
+              CircleAvatar(
+                radius: 26,
+                backgroundColor: AppTheme.brand,
+                child: Text(
+                  initial,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 20,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
+                    ),
+                    if (email.isNotEmpty)
+                      Text(
+                        email,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(color: AppTheme.muted, fontSize: 13),
+                      ),
+                  ],
+                ),
+              ),
+              Icon(
+                expanded ? Icons.expand_less_rounded : Icons.expand_more_rounded,
+                color: AppTheme.brand,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ProfileDetailTile extends StatelessWidget {
+  const _ProfileDetailTile({
+    required this.icon,
+    required this.label,
+    required this.value,
+    this.valueColor,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+  final Color? valueColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: AppTheme.border.withValues(alpha: 0.9)),
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        hoverColor: AppTheme.brandLight,
+        onTap: () {},
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          child: Row(
+            children: [
+              Icon(icon, size: 20, color: AppTheme.brand),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(label, style: const TextStyle(color: AppTheme.muted, fontSize: 12)),
+                    const SizedBox(height: 2),
+                    Text(
+                      value,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontWeight: FontWeight.w700, color: valueColor ?? AppTheme.primary),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class MoreHubScreen extends StatelessWidget {

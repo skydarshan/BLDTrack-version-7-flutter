@@ -5,6 +5,7 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/utils/form_validation_helpers.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../auth/providers/auth_provider.dart';
+import '../../pms/widgets/pickers.dart';
 import '../../pms/widgets/pms_widgets.dart';
 import '../services/settings_apis.dart';
 import '../utils/permissions.dart';
@@ -213,7 +214,7 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
                       const SizedBox(height: 12),
                       if (_fieldErrors.hasErrors)
                         ValidationSummaryBanner(messages: _fieldErrors.messages),
-                      DropdownButtonFormField<String>(
+                      AppDropdownFormField<String>(
                         initialValue: ['gmail', 'outlook', 'custom']
                                 .contains(_providerCtrl.text)
                             ? _providerCtrl.text

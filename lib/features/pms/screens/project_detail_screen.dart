@@ -412,6 +412,53 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen>
     }
   }
 
+  Future<void> _archive({required bool archive}) async {
+    final name = _project?['project_name']?.toString() ?? 'this project';
+    final ok = await confirmAction(
+      context,
+      title: archive ? 'Archive project?' : 'Unarchive project?',
+      message: name,
+      confirmLabel: archive ? 'Archive' : 'Unarchive',
+    );
+    if (!ok || !mounted) return;
+    try {
+      final api = context.read<PmsServices>().projects;
+      if (archive) {
+        await api.archive(widget.projectId);
+      } else {
+        await api.unarchive(widget.projectId);
+      }
+      if (!mounted) return;
+      showPmsSnack(context, archive ? 'Project archived' : 'Project restored');
+      await _loadCore();
+    } on ApiException catch (e) {
+      if (mounted) showPmsSnack(context, e.message, error: true);
+    }
+  }
+
+  Future<void> _deleteProject() async {
+    final name = _project?['project_name']?.toString() ?? 'this project';
+    final ok = await confirmAction(
+      context,
+      title: 'Delete project?',
+      message: '$name cannot be undone.',
+      confirmLabel: 'Delete',
+    );
+    if (!ok || !mounted) return;
+    try {
+      await context.read<PmsServices>().projects.delete(widget.projectId);
+      if (!mounted) return;
+      showPmsSnack(context, 'Project deleted');
+      if (context.canPop()) {
+        context.pop();
+      } else {
+        context.go('/pms/projects');
+      }
+    } on ApiException catch (e) {
+      if (mounted) showPmsSnack(context, e.message, error: true);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final project = _project ??
@@ -443,6 +490,30 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen>
               if (updated == true && mounted) _loadCore();
             },
             icon: const Icon(Icons.edit_outlined),
+          ),
+          PopupMenuButton<String>(
+            tooltip: 'More',
+            onSelected: (value) {
+              final archived = project?['status']?.toString() == 'archived';
+              if (value == 'archive') {
+                _archive(archive: !archived);
+              } else if (value == 'delete') {
+                _deleteProject();
+              }
+            },
+            itemBuilder: (_) {
+              final archived = project?['status']?.toString() == 'archived';
+              return [
+                PopupMenuItem(
+                  value: 'archive',
+                  child: Text(archived ? 'Unarchive' : 'Archive'),
+                ),
+                const PopupMenuItem(
+                  value: 'delete',
+                  child: Text('Delete', style: TextStyle(color: AppTheme.danger)),
+                ),
+              ];
+            },
           ),
           IconButton(
             tooltip: 'Save as template',

@@ -390,7 +390,7 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
                       },
                     ),
                   const SizedBox(height: 12),
-                  DropdownButtonFormField<String>(
+                  AppDropdownFormField<String>(
                     initialValue: _priority,
                     decoration: const InputDecoration(labelText: 'Priority'),
                     items: [
@@ -400,7 +400,7 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
                     onChanged: (v) => setState(() => _priority = v ?? _priority),
                   ),
                   const SizedBox(height: 12),
-                  DropdownButtonFormField<String>(
+                  AppDropdownFormField<String>(
                     key: ValueKey('status-$_status-${widget.isEdit}'),
                     initialValue: _status,
                     decoration: const InputDecoration(labelText: 'Status'),

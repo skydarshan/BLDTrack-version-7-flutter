@@ -81,7 +81,7 @@ class _ProcurementHomeScreenState extends State<ProcurementHomeScreen> {
       extendBody: true,
       appBar: const ModernAppBar(
         title: 'Procurement',
-        actions: [WorkspaceSwitcherButton()],
+        actions: [WorkspaceSwitcherButton(), UserProfileButton()],
       ),
       body: RefreshIndicator(
         onRefresh: _load,
@@ -770,6 +770,9 @@ class _RrCreateScreenState extends State<RrCreateScreen> {
   @override
   void dispose() {
     _remarks.dispose();
+    for (final line in _lines) {
+      line.dispose();
+    }
     super.dispose();
   }
 
@@ -1063,7 +1066,7 @@ class _RrCreateScreenState extends State<RrCreateScreen> {
           if (_saveError != null)
             ErrorBanner(message: _saveError!, onRetry: _saving ? null : _save),
           if (_fieldErrors.hasErrors) ValidationSummaryBanner(messages: _fieldErrors.messages),
-          DropdownButtonFormField<String>(
+          AppDropdownFormField<String>(
             initialValue: _prType,
             decoration: const InputDecoration(labelText: 'PR type'),
             items: const [
@@ -1122,7 +1125,7 @@ class _RrCreateScreenState extends State<RrCreateScreen> {
               if (d != null) setState(() => _expected = d);
             },
           ),
-          DropdownButtonFormField<String>(
+          AppDropdownFormField<String>(
             initialValue: _localPurchase,
             decoration: const InputDecoration(labelText: 'Local purchase'),
             items: const [
@@ -1187,6 +1190,26 @@ class _RrCreateScreenState extends State<RrCreateScreen> {
                 padding: const EdgeInsets.all(12),
                 child: Column(
                   children: [
+                    Row(
+                      children: [
+                        Text(
+                          'Line ${i + 1}',
+                          style: const TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                        const Spacer(),
+                        IconButton(
+                          tooltip: 'Delete line',
+                          onPressed: () {
+                            final removed = _lines.removeAt(i);
+                            setState(() {});
+                            WidgetsBinding.instance.addPostFrameCallback((_) {
+                              removed.dispose();
+                            });
+                          },
+                          icon: const Icon(Icons.delete_outline, color: AppTheme.danger),
+                        ),
+                      ],
+                    ),
                     PickerField(
                       label: 'Item',
                       valueLabel: _lines[i].itemLabel,
@@ -1422,6 +1445,14 @@ class _RrLine {
   final gst = TextEditingController(text: '0');
   final freight = TextEditingController(text: '0');
   final remark = TextEditingController();
+
+  void dispose() {
+    qty.dispose();
+    rate.dispose();
+    gst.dispose();
+    freight.dispose();
+    remark.dispose();
+  }
 
   void clearItem() {
     itemId = null;

@@ -170,7 +170,7 @@ class _ContractorsScreenState extends State<ContractorsScreen> {
                       ),
                     ),
                     const SizedBox(height: 8),
-                    DropdownButtonFormField<String>(
+                    AppDropdownFormField<String>(
                       initialValue: type,
                       decoration: const InputDecoration(labelText: 'Type'),
                       items: [
@@ -180,7 +180,7 @@ class _ContractorsScreenState extends State<ContractorsScreen> {
                       onChanged: (v) => setLocal(() => type = v ?? type),
                     ),
                     const SizedBox(height: 8),
-                    DropdownButtonFormField<String>(
+                    AppDropdownFormField<String>(
                       initialValue: nature,
                       decoration: const InputDecoration(labelText: 'Nature of work *'),
                       items: [

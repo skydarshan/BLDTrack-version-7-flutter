@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
@@ -39,11 +41,18 @@ class _ProjectFormScreenState extends State<ProjectFormScreen> {
 
   String _status = 'not_started';
   String _priority = 'medium';
+  String _priorityOff = 'medium';
   DateTime? _startDate;
   DateTime? _endDate;
 
   String? _siteId;
   String _siteLabel = '';
+  Map<String, dynamic>? _siteRaw;
+  Timer? _codeTimer;
+  int _codeReq = 0;
+  int _previewSeq = 1;
+  String? _serverCode;
+  bool _useNextCodeApi = true;
   String? _managerId;
   String _managerLabel = '';
   String? _leadId;
@@ -51,17 +60,19 @@ class _ProjectFormScreenState extends State<ProjectFormScreen> {
 
   List<PendingFile> _files = [];
   List<OptionItem> _users = const [];
-  List<OptionItem> _sites = const [];
   final _fieldErrors = FieldErrors();
 
   @override
   void initState() {
     super.initState();
+    _nameCtrl.addListener(_onProjectNameChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) => _bootstrap());
   }
 
   @override
   void dispose() {
+    _codeTimer?.cancel();
+    _nameCtrl.removeListener(_onProjectNameChanged);
     _nameCtrl.dispose();
     _codeCtrl.dispose();
     _descCtrl.dispose();
@@ -75,14 +86,11 @@ class _ProjectFormScreenState extends State<ProjectFormScreen> {
       final api = context.read<PmsServices>();
       final me = widget.isEdit ? null : context.read<AuthProvider>().user;
       _users = mapToOptions(await api.masters.listUsers());
-      if (!widget.isEdit && mounted) {
-        _sites = await loadSiteOptions(context);
-        if (me != null) {
-          _managerId = me.id;
-          _managerLabel = me.name;
-          _leadId = me.id;
-          _leadLabel = me.name;
-        }
+      if (!widget.isEdit && me != null && mounted) {
+        _managerId = me.id;
+        _managerLabel = me.name;
+        _leadId = me.id;
+        _leadLabel = me.name;
       }
       if (widget.isEdit) {
         final project = await api.projects.getById(widget.projectId!);
@@ -92,6 +100,7 @@ class _ProjectFormScreenState extends State<ProjectFormScreen> {
         final status = project['status']?.toString();
         _status = (status == null || status == 'archived') ? 'not_started' : status;
         _priority = project['priority']?.toString() ?? 'medium';
+        if (_priority != 'high') _priorityOff = _priority;
         _siteId = idOf(project['site']);
         _siteLabel = labelOf(project['site']);
         _managerId = idOf(project['project_manager']);
@@ -142,6 +151,73 @@ class _ProjectFormScreenState extends State<ProjectFormScreen> {
   String? _iso(DateTime? d) =>
       d?.toIso8601String().substring(0, 10);
 
+  void _onProjectNameChanged() {
+    if (widget.isEdit) return;
+    _serverCode = null;
+    if (mounted) setState(() {});
+    _scheduleGeneratedCode();
+  }
+
+  void _scheduleGeneratedCode() {
+    _codeTimer?.cancel();
+    _codeTimer = Timer(const Duration(milliseconds: 350), _refreshGeneratedCode);
+  }
+
+  /// Code shown in the input. Comes from the name and site immediately.
+  String _displayCode() {
+    if (widget.isEdit) return _codeCtrl.text.trim();
+    final server = _serverCode?.trim() ?? '';
+    if (server.isNotEmpty) return server;
+    final name = _nameCtrl.text.trim();
+    if (name.length < 2 || (_siteId ?? '').isEmpty) return '';
+    final site = _siteRaw ?? <String, dynamic>{'site_name': _siteLabel};
+    return _buildProjectCode(name, site, _previewSeq);
+  }
+
+  Future<void> _refreshGeneratedCode() async {
+    if (widget.isEdit || !mounted) return;
+    final name = _nameCtrl.text.trim();
+    final siteId = _siteId;
+    if (name.length < 2 || siteId == null || siteId.isEmpty) {
+      if (_serverCode != null || _previewSeq != 1) {
+        setState(() {
+          _serverCode = null;
+          _previewSeq = 1;
+        });
+      }
+      return;
+    }
+    final req = ++_codeReq;
+    try {
+      final api = context.read<PmsServices>().projects;
+      if (_useNextCodeApi) {
+        try {
+          final code = await api.nextCode(siteId: siteId, projectName: name);
+          if (!mounted || req != _codeReq) return;
+          if (code.isNotEmpty) {
+            setState(() => _serverCode = code);
+            return;
+          }
+        } on ApiException catch (e) {
+          if (e.statusCode == 404 || e.statusCode == 403 || e.statusCode == 400) {
+            _useNextCodeApi = false;
+          }
+        }
+      }
+      final seq = await _localSequence(api, siteId);
+      if (!mounted || req != _codeReq) return;
+      setState(() => _previewSeq = seq);
+    } catch (_) {
+      if (mounted) setState(() {});
+    }
+  }
+
+  Future<int> _localSequence(dynamic api, String siteId) async {
+    final counts = await api.statusCounts({'site': siteId});
+    final total = (counts['total'] as num?)?.toInt() ?? 0;
+    return total + 1;
+  }
+
   bool _validateForm() {
     _fieldErrors.clear();
     if (!widget.isEdit) {
@@ -165,6 +241,13 @@ class _ProjectFormScreenState extends State<ProjectFormScreen> {
     return !_fieldErrors.hasErrors;
   }
 
+  void _setPriority(String value) {
+    setState(() {
+      _priority = value;
+      if (value != 'high') _priorityOff = value;
+    });
+  }
+
   Future<void> _submit() async {
     FocusScope.of(context).unfocus();
     final formOk = _formKey.currentState?.validate() ?? false;
@@ -182,12 +265,16 @@ class _ProjectFormScreenState extends State<ProjectFormScreen> {
 
     setState(() => _saving = true);
     try {
+      if (!widget.isEdit) {
+        _codeTimer?.cancel();
+        await _refreshGeneratedCode();
+      }
+      if (!mounted) return;
       final api = context.read<PmsServices>().projects;
       final timeline = {
         'start_date': _iso(_startDate),
         'end_date': _iso(_endDate),
       };
-      final files = _files.map((f) => f.toEntry()).toList();
       if (widget.isEdit) {
         await api.update(
           widget.projectId!,
@@ -203,13 +290,13 @@ class _ProjectFormScreenState extends State<ProjectFormScreen> {
             if (_reasonCtrl.text.trim().isNotEmpty)
               'reason': _reasonCtrl.text.trim(),
           },
-          files: files,
+          files: _files.map((f) => f.toEntry()).toList(),
         );
       } else {
         await api.create(
           {
             'project_name': _nameCtrl.text.trim(),
-            'code': _codeCtrl.text.trim(),
+            if (_displayCode().isNotEmpty) 'code': _displayCode(),
             'description': _descCtrl.text.trim(),
             'site': _siteId,
             'status': _status,
@@ -218,7 +305,6 @@ class _ProjectFormScreenState extends State<ProjectFormScreen> {
             'project_manager': _managerId,
             'project_lead': _leadId,
           },
-          files: files,
         );
       }
       if (!mounted) return;
@@ -241,7 +327,7 @@ class _ProjectFormScreenState extends State<ProjectFormScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.isEdit ? 'Edit project' : 'New project'),
+        title: Text(widget.isEdit ? 'Edit project' : 'Add Project'),
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
@@ -256,24 +342,26 @@ class _ProjectFormScreenState extends State<ProjectFormScreen> {
                   ],
                   if (_fieldErrors.hasErrors)
                     ValidationSummaryBanner(messages: _fieldErrors.messages),
+                  if (!widget.isEdit) ...[
+                    const Text(
+                      'Plan better, Track smarter.',
+                      style: TextStyle(color: AppTheme.muted, fontSize: 13),
+                    ),
+                    const SizedBox(height: 14),
+                    const _AddProjectSteps(),
+                    const SizedBox(height: 16),
+                  ],
                   TextFormField(
                     controller: _nameCtrl,
-                    decoration: const InputDecoration(labelText: 'Project name *'),
+                    decoration: const InputDecoration(
+                      labelText: 'Project name *',
+                      hintText: 'e.g. Green Valley Residences — Phase 2',
+                    ),
+                    onChanged: (_) => _onProjectNameChanged(),
                     validator: (v) {
                       return FormValidators.minLength(v, 2, 'Project name') ??
                           FormValidators.maxLength(v, 200, 'Project name');
                     },
-                  ),
-                  const SizedBox(height: 12),
-                  TextFormField(
-                    controller: _codeCtrl,
-                    decoration: const InputDecoration(labelText: 'Code'),
-                  ),
-                  const SizedBox(height: 12),
-                  TextFormField(
-                    controller: _descCtrl,
-                    decoration: const InputDecoration(labelText: 'Description'),
-                    maxLines: 3,
                   ),
                   const SizedBox(height: 12),
                   if (!widget.isEdit)
@@ -285,7 +373,6 @@ class _ProjectFormScreenState extends State<ProjectFormScreen> {
                       onTap: () async {
                         final options = await loadSiteOptions(context);
                         if (!mounted) return;
-                        setState(() => _sites = options);
                         if (!context.mounted) return;
                         final picked = await showOptionPicker(
                           context,
@@ -298,8 +385,11 @@ class _ProjectFormScreenState extends State<ProjectFormScreen> {
                         setState(() {
                           _siteId = picked.value;
                           _siteLabel = picked.label;
+                          _siteRaw = picked.raw;
+                          _serverCode = null;
                           _fieldErrors.set('site', null);
                         });
+                        _scheduleGeneratedCode();
                       },
                     )
                   else
@@ -308,25 +398,54 @@ class _ProjectFormScreenState extends State<ProjectFormScreen> {
                       child: Text(_siteLabel.isEmpty ? '—' : _siteLabel),
                     ),
                   const SizedBox(height: 12),
-                  DropdownButtonFormField<String>(
-                    initialValue: _status,
-                    decoration: const InputDecoration(labelText: 'Status'),
-                    items: [
-                      for (final s in PmsConstants.projectStatuses)
-                        DropdownMenuItem(value: s.$1, child: Text(s.$2)),
-                    ],
-                    onChanged: (v) => setState(() => _status = v ?? _status),
-                  ),
+                  _projectCodeBox(),
                   const SizedBox(height: 12),
-                  DropdownButtonFormField<String>(
+                  AppDropdownFormField<String>(
+                    key: ValueKey('priority-$_priority'),
                     initialValue: _priority,
-                    decoration: const InputDecoration(labelText: 'Priority'),
+                    decoration: const InputDecoration(labelText: 'Priority *'),
                     items: [
                       for (final p in PmsConstants.priorities)
                         DropdownMenuItem(value: p.$1, child: Text(p.$2)),
                     ],
-                    onChanged: (v) => setState(() => _priority = v ?? _priority),
+                    onChanged: (v) => _setPriority(v ?? _priority),
                   ),
+                  const SizedBox(height: 12),
+                  _personField(
+                    label: 'Project lead',
+                    required: !widget.isEdit,
+                    valueLabel: _leadLabel,
+                    errorKey: 'lead',
+                    selected: _leadId,
+                    onPicked: (picked) {
+                      _leadId = picked.value;
+                      _leadLabel = picked.label;
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  _personField(
+                    label: 'Project manager',
+                    required: !widget.isEdit,
+                    valueLabel: _managerLabel,
+                    errorKey: 'manager',
+                    selected: _managerId,
+                    onPicked: (picked) {
+                      _managerId = picked.value;
+                      _managerLabel = picked.label;
+                    },
+                  ),
+                  if (widget.isEdit) ...[
+                    const SizedBox(height: 12),
+                    AppDropdownFormField<String>(
+                      initialValue: _status,
+                      decoration: const InputDecoration(labelText: 'Status'),
+                      items: [
+                        for (final s in PmsConstants.projectStatuses)
+                          DropdownMenuItem(value: s.$1, child: Text(s.$2)),
+                      ],
+                      onChanged: (v) => setState(() => _status = v ?? _status),
+                    ),
+                  ],
                   const SizedBox(height: 12),
                   Row(
                     children: [
@@ -367,47 +486,26 @@ class _ProjectFormScreenState extends State<ProjectFormScreen> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 12),
-                  PickerField(
-                    label: 'Project manager',
-                    required: !widget.isEdit,
-                    valueLabel: _managerLabel,
-                    errorText: _fieldErrors['manager'],
-                    onTap: () async {
-                      final picked = await showOptionPicker(
-                        context,
-                        title: 'Project manager',
-                        options: _users,
-                        selected: _managerId,
-                      );
-                      if (picked == null) return;
-                      setState(() {
-                        _managerId = picked.value;
-                        _managerLabel = picked.label;
-                        _fieldErrors.set('manager', null);
-                      });
-                    },
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Mark as High Priority'),
+                    value: _priority == 'high',
+                    onChanged: (on) => setState(() {
+                      if (on) {
+                        if (_priority != 'high') _priorityOff = _priority;
+                        _priority = 'high';
+                      } else {
+                        _priority = _priorityOff == 'high' ? 'medium' : _priorityOff;
+                      }
+                    }),
                   ),
-                  const SizedBox(height: 12),
-                  PickerField(
-                    label: 'Project lead',
-                    required: !widget.isEdit,
-                    valueLabel: _leadLabel,
-                    errorText: _fieldErrors['lead'],
-                    onTap: () async {
-                      final picked = await showOptionPicker(
-                        context,
-                        title: 'Project lead',
-                        options: _users,
-                        selected: _leadId,
-                      );
-                      if (picked == null) return;
-                      setState(() {
-                        _leadId = picked.value;
-                        _leadLabel = picked.label;
-                        _fieldErrors.set('lead', null);
-                      });
-                    },
+                  TextFormField(
+                    controller: _descCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'Description',
+                      hintText: 'Scope of work, towers/blocks, client notes...',
+                    ),
+                    maxLines: 3,
                   ),
                   if (widget.isEdit) ...[
                     const SizedBox(height: 12),
@@ -418,25 +516,227 @@ class _ProjectFormScreenState extends State<ProjectFormScreen> {
                       ),
                     ),
                   ],
+                  if (widget.isEdit) ...[
+                    const SizedBox(height: 16),
+                    MediaPickerBar(
+                      files: _files,
+                      onChanged: (v) => setState(() => _files = v),
+                    ),
+                  ],
                   const SizedBox(height: 16),
-                  MediaPickerBar(
-                    files: _files,
-                    onChanged: (v) => setState(() => _files = v),
-                  ),
-                  const SizedBox(height: 12),
-                  FilledButton(
-                    onPressed: _saving ? null : _submit,
-                    child: _saving
-                        ? const SizedBox(
-                            height: 22,
-                            width: 22,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : Text(widget.isEdit ? 'Save changes' : 'Create project'),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: _saving ? null : () => context.pop(),
+                          child: const Text('Cancel'),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: FilledButton(
+                          style: FilledButton.styleFrom(backgroundColor: AppTheme.accent),
+                          onPressed: _saving ? null : _submit,
+                          child: _saving
+                              ? const SizedBox(
+                                  height: 22,
+                                  width: 22,
+                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                )
+                              : Text(widget.isEdit ? 'Save changes' : 'Create Project'),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
             ),
     );
   }
+
+  Widget _projectCodeBox() {
+    final code = _displayCode();
+    final hasCode = code.isNotEmpty;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        InputDecorator(
+          decoration: InputDecoration(
+            labelText: 'Project code *',
+            filled: true,
+            fillColor: const Color(0xFFF3F4F6),
+            prefixIcon: const Icon(Icons.tag, size: 18),
+            suffixIcon: Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: Chip(
+                label: const Text('Auto-generated'),
+                labelStyle: const TextStyle(
+                  color: Color(0xFF6D28D9),
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                ),
+                backgroundColor: const Color(0xFFEDE9FE),
+                visualDensity: VisualDensity.compact,
+                side: BorderSide.none,
+                padding: EdgeInsets.zero,
+              ),
+            ),
+          ),
+          child: Text(
+            hasCode ? code : 'Generated after project name & site selection',
+            style: TextStyle(
+              color: hasCode ? AppTheme.primary : AppTheme.muted,
+              fontWeight: hasCode ? FontWeight.w700 : FontWeight.w500,
+              fontSize: 16,
+            ),
+          ),
+        ),
+        const SizedBox(height: 6),
+        const Row(
+          children: [
+            Icon(Icons.info_outline, size: 14, color: AppTheme.muted),
+            SizedBox(width: 4),
+            Expanded(
+              child: Text(
+                'Project code will be generated automatically',
+                style: TextStyle(fontSize: 12, color: AppTheme.muted),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _personField({
+    required String label,
+    required bool required,
+    required String valueLabel,
+    required String errorKey,
+    required String? selected,
+    required void Function(OptionItem picked) onPicked,
+  }) {
+    final needsSite = !widget.isEdit && (_siteId == null || _siteId!.isEmpty);
+    return PickerField(
+      label: label,
+      required: required,
+      valueLabel: needsSite ? 'Select site first' : valueLabel,
+      errorText: _fieldErrors[errorKey],
+      onTap: () async {
+        if (needsSite) {
+          showPmsSnack(context, 'Select site first', error: true);
+          return;
+        }
+        final picked = await showOptionPicker(
+          context,
+          title: label,
+          options: _users,
+          selected: selected,
+        );
+        if (picked == null) return;
+        setState(() {
+          onPicked(picked);
+          _fieldErrors.set(errorKey, null);
+        });
+      },
+    );
+  }
+}
+
+class _AddProjectSteps extends StatelessWidget {
+  const _AddProjectSteps();
+
+  @override
+  Widget build(BuildContext context) {
+    const steps = [
+      ('1', 'Basics', 'Project details'),
+      ('2', 'Team & Roles', 'Lead & Manager'),
+      ('3', 'Schedule', 'Start & end date'),
+    ];
+    return Row(
+      children: [
+        for (var i = 0; i < steps.length; i++) ...[
+          if (i > 0) const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    CircleAvatar(
+                      radius: 10,
+                      backgroundColor: i == 0 ? AppTheme.accent : const Color(0xFFE5E7EB),
+                      child: Text(
+                        steps[i].$1,
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: i == 0 ? Colors.white : AppTheme.muted,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        steps[i].$2,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  steps[i].$3,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 10, color: AppTheme.muted),
+                ),
+                const SizedBox(height: 6),
+                Container(
+                  height: 3,
+                  decoration: BoxDecoration(
+                    color: i == 0 ? AppTheme.accent : const Color(0xFFE5E7EB),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+String _lettersOnly(String value) =>
+    value.replaceAll(RegExp(r'[^A-Za-z]'), '').toUpperCase();
+
+String _projectNamePrefix(String projectName) {
+  final letters = _lettersOnly(projectName);
+  if (letters.isEmpty) return 'PRJ';
+  return letters.substring(0, letters.length >= 3 ? 3 : letters.length).padRight(3, 'X');
+}
+
+String _siteCodePart(Map<String, dynamic>? site) {
+  var raw = '';
+  for (final key in ['code', 'site_name', 'name']) {
+    final value = site?[key]?.toString().trim() ?? '';
+    if (value.isNotEmpty) {
+      raw = value.toUpperCase();
+      break;
+    }
+  }
+  final alnum = raw.replaceAll(RegExp(r'[^A-Z0-9]'), '');
+  if (alnum.isEmpty) return 'STE';
+  if (alnum.length <= 6) return alnum;
+  final letters = _lettersOnly(raw);
+  final base = letters.isEmpty ? alnum : letters;
+  return base.substring(0, base.length >= 3 ? 3 : base.length).padRight(3, 'X');
+}
+
+String _buildProjectCode(String projectName, Map<String, dynamic>? site, int sequence) {
+  final seq = sequence < 1 ? 1 : sequence;
+  return '${_projectNamePrefix(projectName)}-${_siteCodePart(site)}-${seq.toString().padLeft(3, '0')}';
 }

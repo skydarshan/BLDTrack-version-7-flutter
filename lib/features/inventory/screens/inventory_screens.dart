@@ -67,7 +67,7 @@ class _InventoryHomeScreenState extends State<InventoryHomeScreen> {
       extendBody: true,
       appBar: const ModernAppBar(
         title: 'Inventory',
-        actions: [WorkspaceSwitcherButton()],
+        actions: [WorkspaceSwitcherButton(), UserProfileButton()],
       ),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -288,7 +288,7 @@ class _ImrListScreenState extends State<ImrListScreen> {
                           ),
                         ],
                       ),
-                      DropdownButtonFormField<String>(
+                      AppDropdownFormField<String>(
                         key: ValueKey('imr-type-$_draftType'),
                         initialValue: _draftType,
                         decoration: const InputDecoration(labelText: 'Inventory type'),
@@ -846,14 +846,26 @@ class _ImrCreateScreenState extends State<ImrCreateScreen> {
     );
   }
 
-  Widget _section(String title, List<Widget> children) {
+  Widget _section(String title, List<Widget> children, {VoidCallback? onDelete}) {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
+            Row(
+              children: [
+                Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
+                if (onDelete != null) ...[
+                  const Spacer(),
+                  IconButton(
+                    tooltip: 'Delete line',
+                    onPressed: onDelete,
+                    icon: const Icon(Icons.delete_outline, color: AppTheme.danger),
+                  ),
+                ],
+              ],
+            ),
             const SizedBox(height: 8),
             ...children,
           ],
@@ -919,7 +931,7 @@ class _ImrCreateScreenState extends State<ImrCreateScreen> {
             decoration: const InputDecoration(labelText: 'Date'),
           ),
           const SizedBox(height: 12),
-          DropdownButtonFormField<String>(
+          AppDropdownFormField<String>(
             key: ValueKey('type-$_type'),
             initialValue: _type,
             decoration: const InputDecoration(labelText: 'Select type *'),
@@ -930,7 +942,7 @@ class _ImrCreateScreenState extends State<ImrCreateScreen> {
             onChanged: (v) => setState(() => _type = v ?? _type),
           ),
           const SizedBox(height: 12),
-          DropdownButtonFormField<String>(
+          AppDropdownFormField<String>(
             key: ValueKey('use-$_inventoryType'),
             initialValue: _inventoryType,
             decoration: const InputDecoration(labelText: 'Select Use Type *'),
@@ -946,7 +958,9 @@ class _ImrCreateScreenState extends State<ImrCreateScreen> {
           ),
           const SizedBox(height: 16),
           for (var i = 0; i < _lines.length; i++) ...[
-            _section('Item ${i + 1}', [
+            _section(
+              'Line ${i + 1}',
+              [
               PickerField(
                 label: 'Item Name',
                 required: true,
@@ -1002,21 +1016,13 @@ class _ImrCreateScreenState extends State<ImrCreateScreen> {
                 controller: _lines[i].remarks,
                 decoration: const InputDecoration(labelText: 'Remarks'),
               ),
-              Align(
-                alignment: Alignment.centerRight,
-                child: IconButton(
-                  tooltip: 'Remove item',
-                  onPressed: _lines.length == 1
-                      ? null
-                      : () {
-                          final removed = _lines.removeAt(i);
-                          removed.dispose();
-                          setState(() {});
-                        },
-                  icon: const Icon(Icons.delete_outline),
-                ),
-              ),
-            ]),
+            ],
+              onDelete: () {
+                final removed = _lines.removeAt(i);
+                setState(() {});
+                WidgetsBinding.instance.addPostFrameCallback((_) => removed.dispose());
+              },
+            ),
             const SizedBox(height: 8),
           ],
           OutlinedButton.icon(
@@ -1972,13 +1978,9 @@ class _TransferCreateScreenState extends State<TransferCreateScreen> {
   }
 
   void _removeRow(int index) {
-    if (_lines.length == 1) {
-      setState(_lines.first.clear);
-      return;
-    }
-    setState(() {
-      _lines.removeAt(index).dispose();
-    });
+    final removed = _lines.removeAt(index);
+    setState(() {});
+    WidgetsBinding.instance.addPostFrameCallback((_) => removed.dispose());
   }
 
   Future<void> _save() async {
@@ -2128,7 +2130,7 @@ class _TransferCreateScreenState extends State<TransferCreateScreen> {
             child: Text(formatDate(_requestDate.toIso8601String())),
           ),
           const SizedBox(height: 12),
-          DropdownButtonFormField<String>(
+          AppDropdownFormField<String>(
             initialValue: _type,
             decoration: const InputDecoration(labelText: 'Inventory type *'),
             items: const [
@@ -2185,12 +2187,12 @@ class _TransferCreateScreenState extends State<TransferCreateScreen> {
                   children: [
                     Row(
                       children: [
-                        Text('Row ${i + 1}', style: const TextStyle(fontWeight: FontWeight.w600)),
+                        Text('Line ${i + 1}', style: const TextStyle(fontWeight: FontWeight.w700)),
                         const Spacer(),
                         IconButton(
-                          tooltip: 'Remove row',
+                          tooltip: 'Delete line',
                           onPressed: () => _removeRow(i),
-                          icon: const Icon(Icons.delete_outline),
+                          icon: const Icon(Icons.delete_outline, color: AppTheme.danger),
                         ),
                       ],
                     ),
@@ -2262,15 +2264,6 @@ class _TransferLine {
   num available = 0;
   final qty = TextEditingController();
   final remarks = TextEditingController();
-
-  void clear() {
-    itemId = null;
-    itemLabel = '';
-    uom = '—';
-    available = 0;
-    qty.clear();
-    remarks.clear();
-  }
 
   void dispose() {
     qty.dispose();
@@ -2629,7 +2622,7 @@ class _ScrapCreateScreenState extends State<ScrapCreateScreen> {
           if (_fieldErrors['number'] != null)
             Text(_fieldErrors['number']!, style: const TextStyle(color: AppTheme.danger, fontSize: 12)),
           const SizedBox(height: 12),
-          DropdownButtonFormField<String>(
+          AppDropdownFormField<String>(
             initialValue: _type,
             decoration: const InputDecoration(labelText: 'Inventory type'),
             items: const [

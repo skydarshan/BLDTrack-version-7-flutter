@@ -10,6 +10,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../core/theme/modern_widgets.dart';
 import '../services/pms_services.dart';
 import '../utils/pms_constants.dart';
+import '../utils/site_options.dart';
 import '../widgets/pickers.dart';
 import '../widgets/pms_widgets.dart';
 
@@ -29,13 +30,59 @@ class _ProjectsListScreenState extends State<ProjectsListScreen> {
   String _search = '';
   String? _status;
   String? _priority;
+  String? _siteId;
+  String _siteLabel = '';
+  String? _routeSite;
+  bool _bootstrapped = false;
+  List<OptionItem> _sites = const [];
   int _page = 1;
   bool _hasMore = false;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _load(reset: true));
+    WidgetsBinding.instance.addPostFrameCallback((_) => _bootstrap());
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final next = _siteFromRoute();
+    if (!_bootstrapped || next == _routeSite) return;
+    _routeSite = next;
+    _siteId = next;
+    _siteLabel = _labelForSite(next);
+    _load(reset: true);
+  }
+
+  String? _siteFromRoute() {
+    final site = GoRouterState.of(context).uri.queryParameters['site'];
+    if (site == null || site.isEmpty) return null;
+    return site;
+  }
+
+  String _labelForSite(String? id) {
+    if (id == null || id.isEmpty) return '';
+    for (final site in _sites) {
+      if (site.value == id) return site.label;
+    }
+    return _siteLabel;
+  }
+
+  Future<void> _bootstrap() async {
+    final routeSite = _siteFromRoute();
+    _routeSite = routeSite;
+    _siteId = routeSite;
+    try {
+      final sites = await loadSiteOptions(context);
+      if (!mounted) return;
+      setState(() {
+        _sites = sites;
+        _siteLabel = _labelForSite(_siteId);
+      });
+    } catch (_) {}
+    _bootstrapped = true;
+    await _load(reset: true);
   }
 
   @override
@@ -60,6 +107,7 @@ class _ProjectsListScreenState extends State<ProjectsListScreen> {
         'search': _search,
         'status': _status,
         'priority': _priority,
+        'site': _siteId,
         'sortBy': 'createdAt',
         'sortOrder': 'desc',
       });
@@ -161,6 +209,24 @@ class _ProjectsListScreenState extends State<ProjectsListScreen> {
     await _load(reset: true);
   }
 
+  Future<void> _pickSite() async {
+    final picked = await showOptionPicker(
+      context,
+      title: 'Site',
+      options: [
+        const OptionItem(value: '', label: 'All sites'),
+        ..._sites,
+      ],
+      selected: _siteId ?? '',
+    );
+    if (picked == null || !mounted) return;
+    setState(() {
+      _siteId = picked.value.isEmpty ? null : picked.value;
+      _siteLabel = picked.value.isEmpty ? '' : picked.label;
+    });
+    await _load(reset: true);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -192,6 +258,12 @@ class _ProjectsListScreenState extends State<ProjectsListScreen> {
             padding: AppTheme.chipRowPadding,
             child: Row(
               children: [
+                FilterChip(
+                  label: Text(_siteId == null ? 'Site' : _siteLabel),
+                  selected: _siteId != null,
+                  onSelected: (_) => _pickSite(),
+                ),
+                const SizedBox(width: 8),
                 FilterChip(
                   label: Text(
                     _status == null

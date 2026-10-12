@@ -22,6 +22,21 @@ class ProjectsApi {
     );
   }
 
+  /// Code the server will assign on create for this name and site.
+  Future<String> nextCode({
+    required String siteId,
+    required String projectName,
+  }) async {
+    final res = await _client.get<Map<String, dynamic>>(
+      '/projects/next-code',
+      queryParameters: {
+        'site': siteId,
+        'project_name': projectName,
+      },
+    );
+    return unwrapDataMap(res.data)['code']?.toString().trim() ?? '';
+  }
+
   Future<Map<String, dynamic>> statusCounts([Map<String, dynamic>? params]) async {
     final res = await _client.get<Map<String, dynamic>>(
       '/projects/status-counts',

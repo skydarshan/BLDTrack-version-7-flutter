@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
@@ -6,6 +8,7 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/network/api_helpers.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/theme/modern_widgets.dart';
+import '../../../core/utils/list_query.dart';
 import '../services/pms_services.dart';
 import '../widgets/pms_widgets.dart';
 
@@ -19,6 +22,10 @@ class TaskApprovalsScreen extends StatefulWidget {
 class _TaskApprovalsScreenState extends State<TaskApprovalsScreen> {
   int _tabIndex = 0;
 
+  final _searchCtrl = TextEditingController();
+  Timer? _debounce;
+  String _search = '';
+
   bool _loading = true;
   String? _error;
   List<Map<String, dynamic>> _readyItems = [];
@@ -28,10 +35,46 @@ class _TaskApprovalsScreenState extends State<TaskApprovalsScreen> {
   bool _readyHasMore = false;
   bool _pendingHasMore = false;
 
+  int get _pageLimit => _search.trim().isEmpty ? 20 : 100;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) => _load(reset: true));
+  }
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    _searchCtrl.dispose();
+    super.dispose();
+  }
+
+  void _onSearch(String value) {
+    final next = value.trim();
+    setState(() => _search = next);
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 400), () {
+      if (!mounted) return;
+      _load(reset: true);
+    });
+  }
+
+  bool _matches(Map<String, dynamic> task) {
+    final q = _search.trim().toLowerCase();
+    if (q.isEmpty) return true;
+    bool hit(dynamic value) {
+      final text = value?.toString().trim().toLowerCase() ?? '';
+      return text.isNotEmpty && !looksLikeObjectId(text) && text.contains(q);
+    }
+
+    final project = task['project'];
+    final site = task['site'];
+    return hit(task['title']) ||
+        hit(labelOf(project, fallback: '')) ||
+        (project is Map && (hit(project['code']) || hit(project['project_name']))) ||
+        hit(labelOf(site, fallback: '')) ||
+        (site is Map && (hit(site['code']) || hit(site['site_name']) || hit(site['location'])));
   }
 
   void _switchTab(int index) {
@@ -51,20 +94,30 @@ class _TaskApprovalsScreenState extends State<TaskApprovalsScreen> {
     }
     try {
       final api = context.read<PmsServices>().tasks;
+      final query = _search.trim();
+      final limit = _pageLimit;
       if (_tabIndex == 0) {
-        final res = await api.readyForCompletion({'page': _readyPage, 'limit': 20});
-        if (!mounted) return;
+        final res = await api.readyForCompletion({
+          'page': _readyPage,
+          'limit': limit,
+          if (query.isNotEmpty) 'search': query,
+        });
+        if (!mounted || _search.trim() != query) return;
         setState(() {
           _readyItems = reset ? res.items : [..._readyItems, ...res.items];
-          _readyHasMore = res.items.length >= 20;
+          _readyHasMore = res.items.length >= limit;
           _loading = false;
         });
       } else {
-        final rows = await api.pendingApprovals({'page': _pendingPage, 'limit': 20});
-        if (!mounted) return;
+        final rows = await api.pendingApprovals({
+          'page': _pendingPage,
+          'limit': limit,
+          if (query.isNotEmpty) 'search': query,
+        });
+        if (!mounted || _search.trim() != query) return;
         setState(() {
           _pendingItems = reset ? rows : [..._pendingItems, ...rows];
-          _pendingHasMore = rows.length >= 20;
+          _pendingHasMore = rows.length >= limit;
           _loading = false;
         });
       }
@@ -90,10 +143,12 @@ class _TaskApprovalsScreenState extends State<TaskApprovalsScreen> {
   }) async {
     final remarksCtrl = TextEditingController();
     String? remarkError;
+    ModalRoute<dynamic>? sheetRoute;
     final ok = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
       builder: (ctx) {
+        sheetRoute ??= ModalRoute.of(ctx);
         return StatefulBuilder(
           builder: (context, setLocal) {
             return Padding(
@@ -117,7 +172,6 @@ class _TaskApprovalsScreenState extends State<TaskApprovalsScreen> {
                     onPressed: () {
                       if (required && remarksCtrl.text.trim().isEmpty) {
                         setLocal(() => remarkError = 'A remark is required');
-                        showPmsSnack(context, 'A remark is required', error: true);
                         return;
                       }
                       Navigator.pop(ctx, true);
@@ -131,12 +185,17 @@ class _TaskApprovalsScreenState extends State<TaskApprovalsScreen> {
         );
       },
     );
-    if (ok != true || !mounted) {
-      remarksCtrl.dispose();
-      return;
-    }
     final remarks = remarksCtrl.text.trim();
-    remarksCtrl.dispose();
+    // The sheet route finishes disposing while the remark field can still be
+    // attached. Drop the controller on the next frame so Flutter does not
+    // throw '_dependents.isEmpty'.
+    final close = sheetRoute?.completed ?? Future<void>.value();
+    close.whenComplete(() {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        remarksCtrl.dispose();
+      });
+    });
+    if (ok != true || !mounted) return;
     try {
       await onSubmit(remarks);
       if (!mounted) return;
@@ -226,7 +285,7 @@ class _TaskApprovalsScreenState extends State<TaskApprovalsScreen> {
   @override
   Widget build(BuildContext context) {
     final isReady = _tabIndex == 0;
-    final items = isReady ? _readyItems : _pendingItems;
+    final items = (isReady ? _readyItems : _pendingItems).where(_matches).toList();
     final hasMore = isReady ? _readyHasMore : _pendingHasMore;
     final stepColor = isReady ? AppTheme.success : AppTheme.accent;
 
@@ -245,6 +304,19 @@ class _TaskApprovalsScreenState extends State<TaskApprovalsScreen> {
               'Step 1 — Ready',
               'Step 2 — Pending',
             ],
+          ),
+          Padding(
+            padding: AppTheme.searchPadding,
+            child: TextField(
+              controller: _searchCtrl,
+              textInputAction: TextInputAction.search,
+              decoration: const InputDecoration(
+                hintText: 'Search title, project or site…',
+                prefixIcon: Icon(Icons.search),
+              ),
+              onChanged: _onSearch,
+              onSubmitted: _onSearch,
+            ),
           ),
           Padding(
             padding: AppTheme.chipRowPadding,
@@ -296,9 +368,16 @@ class _TaskApprovalsScreenState extends State<TaskApprovalsScreen> {
                         ],
                         if (items.isEmpty)
                           EmptyState(
-                            message: isReady
-                                ? 'No tasks ready for completion'
-                                : 'No tasks pending approval',
+                            message: _search.trim().isEmpty
+                                ? (isReady
+                                    ? 'No tasks ready for completion'
+                                    : 'No tasks pending approval')
+                                : listEmptyMessage(
+                                    noun: isReady
+                                        ? 'tasks ready for completion'
+                                        : 'tasks pending approval',
+                                    search: _search,
+                                  ),
                             icon: isReady
                                 ? Icons.check_circle_outline_rounded
                                 : Icons.hourglass_empty_rounded,

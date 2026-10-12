@@ -1271,6 +1271,9 @@ class _DmrCreateScreenState extends State<DmrCreateScreen> {
       _fieldErrors.set('invoiceDate', requiredDate(_invoiceDate, 'Bill / invoice date'));
       _fieldErrors.set('document', _document == null ? 'Upload the bill or challan' : null);
       _fieldErrors.set('otherCharges', _numberError(_otherCharges.text, 'Other charges', required: false));
+      if (_cashLines.isEmpty) {
+        _fieldErrors.set('lines', 'Add at least one item');
+      }
       for (var i = 0; i < _cashLines.length; i++) {
         final line = _cashLines[i];
         _fieldErrors.set('line${i}Category', requiredSelection(line.categoryId, 'Category'));
@@ -1539,7 +1542,7 @@ class _DmrCreateScreenState extends State<DmrCreateScreen> {
             ),
           ),
           const SizedBox(height: 12),
-          DropdownButtonFormField<String>(
+          AppDropdownFormField<String>(
             initialValue: _modeValue,
             decoration: const InputDecoration(labelText: 'Mode *'),
             items: const [
@@ -1595,19 +1598,16 @@ class _DmrCreateScreenState extends State<DmrCreateScreen> {
           for (var i = 0; i < _cashLines.length; i++) ...[
             Row(
               children: [
-                Text('${i + 1}', style: const TextStyle(fontWeight: FontWeight.w700)),
+                Text('Line ${i + 1}', style: const TextStyle(fontWeight: FontWeight.w700)),
                 const Spacer(),
                 IconButton(
+                  tooltip: 'Delete line',
                   onPressed: () {
-                    setState(() {
-                      if (_cashLines.length == 1) {
-                        _cashLines.first.clear();
-                      } else {
-                        _cashLines.removeAt(i).dispose();
-                      }
-                    });
+                    final removed = _cashLines.removeAt(i);
+                    setState(() {});
+                    WidgetsBinding.instance.addPostFrameCallback((_) => removed.dispose());
                   },
-                  icon: const Icon(Icons.delete_outline),
+                  icon: const Icon(Icons.delete_outline, color: AppTheme.danger),
                 ),
               ],
             ),
@@ -1704,6 +1704,11 @@ class _DmrCreateScreenState extends State<DmrCreateScreen> {
             ),
             const Divider(height: 24),
           ],
+          if (_fieldErrors['lines'] != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text(_fieldErrors['lines']!, style: const TextStyle(color: AppTheme.danger, fontSize: 12)),
+            ),
           Align(
             alignment: Alignment.centerLeft,
             child: TextButton.icon(
@@ -1719,7 +1724,7 @@ class _DmrCreateScreenState extends State<DmrCreateScreen> {
             onChanged: (_) => setState(() {}),
           ),
           const SizedBox(height: 12),
-          DropdownButtonFormField<String>(
+          AppDropdownFormField<String>(
             initialValue: _gstRates.contains(_otherGst) ? _otherGst : _gstRates.first,
             decoration: const InputDecoration(labelText: 'Select other charges GST'),
             items: [
@@ -2207,17 +2212,6 @@ class _CashLine {
   final qty = TextEditingController(text: '1');
   final amount = TextEditingController();
   final remark = TextEditingController();
-
-  void clear() {
-    categoryId = null;
-    categoryLabel = '';
-    subId = null;
-    subLabel = '';
-    uom = '';
-    qty.text = '1';
-    amount.clear();
-    remark.clear();
-  }
 
   void dispose() {
     qty.dispose();

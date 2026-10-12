@@ -86,6 +86,7 @@ class MultiSelectField extends StatelessWidget {
 
   Future<void> _open(BuildContext context) async {
     final selected = Set<String>.from(selectedIds);
+    final topInset = MediaQuery.viewPaddingOf(context).top;
     final result = await showModalBottomSheet<List<String>>(
       context: context,
       isScrollControlled: true,
@@ -98,66 +99,39 @@ class MultiSelectField extends StatelessWidget {
                   (o) => o.label.toLowerCase().contains(query.toLowerCase()),
                 )
                 .toList();
-            return SafeArea(
-              child: SizedBox(
-                height: MediaQuery.of(context).size.height * 0.75,
-                child: Column(
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 12, 8, 8),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              label,
-                              style: const TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ),
-                          TextButton(
-                            onPressed: () => Navigator.pop(ctx, selected.toList()),
-                            child: const Text('Done'),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: TextField(
-                        decoration: const InputDecoration(
-                          prefixIcon: Icon(Icons.search),
-                          hintText: 'Search…',
-                        ),
-                        onChanged: (v) => setLocal(() => query = v),
-                      ),
-                    ),
-                    Expanded(
-                      child: ListView.builder(
-                        itemCount: filtered.length,
-                        itemBuilder: (_, i) {
-                          final o = filtered[i];
-                          final checked = selected.contains(o.value);
-                          return CheckboxListTile(
-                            value: checked,
-                            title: Text(o.label),
-                            onChanged: (v) {
-                              setLocal(() {
-                                if (v == true) {
-                                  selected.add(o.value);
-                                } else {
-                                  selected.remove(o.value);
-                                }
-                              });
-                            },
-                          );
-                        },
-                      ),
-                    ),
-                  ],
-                ),
+            return FittedListSheet(
+              title: label,
+              topInset: topInset,
+              headerTrailing: TextButton(
+                onPressed: () => Navigator.pop(ctx, selected.toList()),
+                child: const Text('Done'),
               ),
+              search: TextField(
+                decoration: const InputDecoration(
+                  prefixIcon: Icon(Icons.search),
+                  hintText: 'Search…',
+                ),
+                onChanged: (v) => setLocal(() => query = v),
+              ),
+              emptyMessage: 'No matches',
+              itemCount: filtered.length,
+              itemBuilder: (_, i) {
+                final o = filtered[i];
+                final checked = selected.contains(o.value);
+                return CheckboxListTile(
+                  value: checked,
+                  title: Text(o.label),
+                  onChanged: (v) {
+                    setLocal(() {
+                      if (v == true) {
+                        selected.add(o.value);
+                      } else {
+                        selected.remove(o.value);
+                      }
+                    });
+                  },
+                );
+              },
             );
           },
         );

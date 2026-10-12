@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_theme.dart';
 import '../utils/pms_constants.dart';
+import 'pickers.dart';
 
 Map<String, dynamic> emptyTemplateTaskNode() => {
       'title': '',
@@ -208,7 +209,7 @@ class _TemplateNodeEditor extends StatelessWidget {
               children: [
                 Expanded(
                   flex: 2,
-                  child: DropdownButtonFormField<String>(
+                  child: AppDropdownFormField<String>(
                     initialValue: (node['priority']?.toString().isNotEmpty ?? false)
                         ? node['priority'].toString()
                         : 'medium',

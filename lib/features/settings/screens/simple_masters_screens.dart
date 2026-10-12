@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../pms/widgets/pickers.dart';
 import '../services/settings_apis.dart';
 import 'master_crud_screen.dart';
 
@@ -150,7 +151,7 @@ class CategoriesScreen extends StatelessWidget {
         final type = controllers['type']!.text.isEmpty
             ? 'Project Site Purchase'
             : controllers['type']!.text;
-        return DropdownButtonFormField<String>(
+        return AppDropdownFormField<String>(
           initialValue: type == 'Plant & Machinery'
               ? 'Plant & Machinery'
               : 'Project Site Purchase',

@@ -7,6 +7,7 @@ import '../../../core/utils/form_validation_helpers.dart';
 import '../../../core/theme/app_theme.dart';
 import '../services/pms_services.dart';
 import '../utils/pms_constants.dart';
+import '../widgets/pickers.dart';
 import '../widgets/pms_widgets.dart';
 import '../widgets/template_tree_editor.dart';
 
@@ -145,7 +146,7 @@ class _TemplateFormScreenState extends State<TemplateFormScreen> {
                     maxLines: 3,
                   ),
                   const SizedBox(height: 12),
-                  DropdownButtonFormField<String>(
+                  AppDropdownFormField<String>(
                     initialValue: _scope,
                     decoration: const InputDecoration(labelText: 'Scope'),
                     items: [
