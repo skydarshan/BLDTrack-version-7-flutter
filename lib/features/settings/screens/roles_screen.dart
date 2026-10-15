@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/api_helpers.dart';
+import '../../../core/widgets/sort_menu.dart';
 import '../../../core/utils/form_validation_helpers.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../auth/providers/auth_provider.dart';
@@ -117,6 +118,8 @@ class _RolesScreenState extends State<RolesScreen> {
   String? _error;
   int _page = 1;
   String _search = '';
+  String _sortBy = 'name';
+  String _sortOrder = 'asc';
   List<String> _modules = List.of(_defaultModules);
 
   Permissions get _perms => Permissions(context.read<AuthProvider>().user);
@@ -175,8 +178,8 @@ class _RolesScreenState extends State<RolesScreen> {
         'page': _page,
         'limit': 20,
         'search': _search,
-        'sortBy': 'name',
-        'sortOrder': 'asc',
+        'sortBy': _sortBy,
+        'sortOrder': _sortOrder,
       });
       if (!mounted) return;
       setState(() {
@@ -542,7 +545,24 @@ class _RolesScreenState extends State<RolesScreen> {
     final totalPages = (_pagination?['totalPages'] as num?)?.toInt() ?? 1;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Roles & Permissions')),
+      appBar: AppBar(
+        title: const Text('Roles & Permissions'),
+        actions: [
+          SortMenuButton(
+            choices: nameSortChoices('name', 'Role'),
+            sortBy: _sortBy,
+            sortOrder: _sortOrder,
+            onSelected: (by, order) {
+              setState(() {
+                _sortBy = by;
+                _sortOrder = order;
+                _page = 1;
+              });
+              _load();
+            },
+          ),
+        ],
+      ),
       floatingActionButton: canCreate
           ? FloatingActionButton(
               onPressed: () => _openForm(),

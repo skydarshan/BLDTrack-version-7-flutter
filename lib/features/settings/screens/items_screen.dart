@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/api_helpers.dart';
+import '../../../core/widgets/sort_menu.dart';
 import '../../../core/utils/form_validation_helpers.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../auth/providers/auth_provider.dart';
@@ -29,6 +30,8 @@ class _ItemsScreenState extends State<ItemsScreen> {
   String? _error;
   int _page = 1;
   String _search = '';
+  String _sortBy = 'item_name';
+  String _sortOrder = 'asc';
 
   Permissions get _perms => Permissions(context.read<AuthProvider>().user);
 
@@ -62,8 +65,8 @@ class _ItemsScreenState extends State<ItemsScreen> {
         'page': _page,
         'limit': 20,
         'search': _search,
-        'sortBy': 'item_name',
-        'sortOrder': 'asc',
+        'sortBy': _sortBy,
+        'sortOrder': _sortOrder,
       });
       if (!mounted) return;
       setState(() {
@@ -446,7 +449,24 @@ class _ItemsScreenState extends State<ItemsScreen> {
     final totalPages = (_pagination?['totalPages'] as num?)?.toInt() ?? 1;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Items')),
+      appBar: AppBar(
+        title: const Text('Items'),
+        actions: [
+          SortMenuButton(
+            choices: nameSortChoices('item_name', 'Item'),
+            sortBy: _sortBy,
+            sortOrder: _sortOrder,
+            onSelected: (by, order) {
+              setState(() {
+                _sortBy = by;
+                _sortOrder = order;
+                _page = 1;
+              });
+              _load();
+            },
+          ),
+        ],
+      ),
       floatingActionButton: canCreate
           ? FloatingActionButton(
               onPressed: () => _openForm(),

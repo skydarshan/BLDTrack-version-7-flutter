@@ -31,11 +31,17 @@ List<Map<String, dynamic>> sitesFromAuthProfile(List<dynamic> raw) {
   return docs;
 }
 
+String siteRowLabel(Map<String, dynamic> row) {
+  for (final key in ['site_name', 'name', 'location', 'code']) {
+    final text = row[key]?.toString().trim() ?? '';
+    if (text.isNotEmpty && !looksLikeObjectId(text)) return text;
+  }
+  final labeled = labelOf(row, fallback: '');
+  return labeled == '—' ? '' : labeled;
+}
+
 List<OptionItem> mapSiteRowsToOptions(List<Map<String, dynamic>> rows) {
-  return mapToOptions(
-    rows,
-    labelOfRow: (r) => r['site_name']?.toString() ?? labelOf(r),
-  );
+  return mapToOptions(rows, labelOfRow: siteRowLabel);
 }
 
 List<Map<String, dynamic>> filterSitesByKeyword(

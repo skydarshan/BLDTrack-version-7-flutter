@@ -6,6 +6,7 @@ import '../../../core/config/api_config.dart';
 import '../../../core/org/org_modules.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/form_validators.dart';
+import '../../../core/widgets/motion.dart';
 import '../../pms/widgets/pms_widgets.dart';
 import '../../org/org_session.dart';
 import '../providers/auth_provider.dart';
@@ -50,19 +51,16 @@ class _LoginScreenState extends State<LoginScreen> {
         await context.read<OrgSession>().refresh();
       } catch (_) {}
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Welcome back')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Welcome back')));
       final org = context.read<OrgSession>();
       context.go(workspaceHomePath(org.workspace));
     } else {
       final msg = auth.error ?? 'Login failed. Check your email and password.';
       setState(() => _apiError = msg);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(msg),
-          backgroundColor: AppTheme.danger,
-        ),
+        SnackBar(content: Text(msg), backgroundColor: AppTheme.danger),
       );
     }
   }
@@ -72,6 +70,7 @@ class _LoginScreenState extends State<LoginScreen> {
     final auth = context.watch<AuthProvider>();
 
     return AuthScaffold(
+      animateEntrance: true,
       title: 'Sign in',
       subtitle: 'Use your organization admin or user account.',
       child: Form(
@@ -80,7 +79,9 @@ class _LoginScreenState extends State<LoginScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             if (_apiError != null) ...[
-              ValidationSummaryBanner(messages: [_apiError!]),
+              SoftAppear(
+                child: ValidationSummaryBanner(messages: [_apiError!]),
+              ),
             ],
             if (ApiConfig.debugLabel.isNotEmpty) ...[
               Text(
@@ -113,9 +114,16 @@ class _LoginScreenState extends State<LoginScreen> {
               autofillHints: const [AutofillHints.password],
               decoration: InputDecoration(
                 labelText: 'Password',
-                suffixIcon: IconButton(
-                  onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
-                  icon: Icon(_obscurePassword ? Icons.visibility_outlined : Icons.visibility_off_outlined),
+                suffixIcon: PressScale(
+                  child: IconButton(
+                    onPressed: () =>
+                        setState(() => _obscurePassword = !_obscurePassword),
+                    icon: Icon(
+                      _obscurePassword
+                          ? Icons.visibility_outlined
+                          : Icons.visibility_off_outlined,
+                    ),
+                  ),
                 ),
               ),
               validator: FormValidators.password,
@@ -124,15 +132,21 @@ class _LoginScreenState extends State<LoginScreen> {
               },
             ),
             const SizedBox(height: 12),
-            LoadingButton(
-              label: 'Sign in',
-              loading: auth.isBusy,
-              onPressed: _submit,
+            PressScale(
+              enabled: !auth.isBusy,
+              child: LoadingButton(
+                label: 'Sign in',
+                loading: auth.isBusy,
+                onPressed: _submit,
+              ),
             ),
             const SizedBox(height: 8),
-            TextButton(
-              onPressed: auth.isBusy ? null : () => context.go('/register'),
-              child: const Text('Create an organization'),
+            PressScale(
+              enabled: !auth.isBusy,
+              child: TextButton(
+                onPressed: auth.isBusy ? null : () => context.go('/register'),
+                child: const Text('Create an organization'),
+              ),
             ),
           ],
         ),

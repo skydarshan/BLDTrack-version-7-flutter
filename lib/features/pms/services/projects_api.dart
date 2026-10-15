@@ -132,7 +132,15 @@ class ProjectsApi {
   }
 
   Future<List<Map<String, dynamic>>> listComments(String id) async {
-    final res = await _client.get<Map<String, dynamic>>('/projects/$id/comments');
+    final res = await _client.get<Map<String, dynamic>>(
+      '/projects/$id/comments',
+      queryParameters: {
+        'page': 1,
+        'limit': 100,
+        'sortBy': 'createdAt',
+        'sortOrder': 'desc',
+      },
+    );
     return unwrapDataList(res.data)
         .whereType<Map>()
         .map((e) => Map<String, dynamic>.from(e))

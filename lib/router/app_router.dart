@@ -6,6 +6,8 @@ import '../features/app/app_shell.dart';
 import '../features/auth/providers/auth_provider.dart';
 import '../features/auth/screens/login_screen.dart';
 import '../features/auth/screens/register_screen.dart';
+import '../features/dmr/screens/dmr_edit_screen.dart';
+import '../features/dmr/screens/dmr_finance_screens.dart';
 import '../features/dmr/screens/dmr_screens.dart';
 import '../features/inventory/screens/inventory_screens.dart';
 import '../features/org/org_session.dart';
@@ -21,6 +23,7 @@ import '../features/pms/screens/tasks_list_screen.dart';
 import '../features/pms/screens/template_form_screen.dart';
 import '../features/pms/screens/templates_list_screen.dart';
 import '../features/procurement/screens/procurement_screens.dart';
+import '../features/procurement/screens/rc_editor_screen.dart';
 import '../features/procurement/screens/rc_po_screens.dart';
 import '../features/settings/screens/app_settings_screen.dart';
 import '../features/settings/screens/audit_logs_screen.dart';
@@ -91,6 +94,10 @@ GoRouter createAppRouter(
           GoRoute(path: '/procurement/rr', builder: (_, _) => const RrListScreen()),
           GoRoute(path: '/procurement/rr/new', builder: (_, _) => const RrCreateScreen()),
           GoRoute(
+            path: '/procurement/rr/:id/edit',
+            builder: (_, state) => RrCreateScreen(id: state.pathParameters['id']!),
+          ),
+          GoRoute(
             path: '/procurement/rr/:id',
             builder: (_, state) => RrDetailScreen(id: state.pathParameters['id']!),
           ),
@@ -98,10 +105,18 @@ GoRouter createAppRouter(
           GoRoute(path: '/procurement/rc', builder: (_, _) => const RcListScreen()),
           GoRoute(
             path: '/procurement/rc/:id',
-            builder: (_, state) => RcDetailScreen(id: state.pathParameters['id']!),
+            builder: (_, state) => RcEditorScreen(id: state.pathParameters['id']!),
           ),
           GoRoute(path: '/procurement/rate-approvals', builder: (_, _) => const RateApprovalsScreen()),
           GoRoute(path: '/procurement/po', builder: (_, _) => const PoListScreen()),
+          GoRoute(
+            path: '/procurement/po/:id/edit',
+            builder: (_, state) => PoFormScreen(id: state.pathParameters['id']!),
+          ),
+          GoRoute(
+            path: '/procurement/po/:id/revise',
+            builder: (_, state) => PoFormScreen(id: state.pathParameters['id']!, revise: true),
+          ),
           GoRoute(
             path: '/procurement/po/:id',
             builder: (_, state) => PoDetailScreen(id: state.pathParameters['id']!),
@@ -111,16 +126,49 @@ GoRouter createAppRouter(
           GoRoute(path: '/dmr/create', builder: (_, _) => const DmrCreateScreen()),
           GoRoute(path: '/dmr/status', builder: (_, _) => const DmrStatusScreen()),
           GoRoute(
+            path: '/dmr/debit/new',
+            builder: (_, state) {
+              final query = state.uri.queryParameters;
+              return DebitNoteCreateScreen(
+                orderId: query['order'] ?? '',
+                roNumber: query['ro'] ?? '',
+                siteId: query['site'] ?? '',
+                vendorId: query['vendor'] ?? '',
+              );
+            },
+          ),
+          GoRoute(
             path: '/dmr/status/:id',
             builder: (_, state) => DmrOrderDetailScreen(id: state.pathParameters['id']!),
+          ),
+          GoRoute(
+            path: '/dmr/status/:id/edit',
+            builder: (_, state) => DmrRecordEditScreen(
+              id: state.pathParameters['id']!,
+              kind: DmrEditKind.order,
+            ),
           ),
           GoRoute(
             path: '/dmr/entries/:id',
             builder: (_, state) => DmrEntryDetailScreen(id: state.pathParameters['id']!),
           ),
           GoRoute(
+            path: '/dmr/entries/:id/edit',
+            builder: (_, state) => DmrCreateScreen(
+              recordId: state.pathParameters['id'],
+              recordKind: 'entry',
+            ),
+          ),
+          GoRoute(
             path: '/dmr/imprest/:id',
             builder: (_, state) => DmrImprestDetailScreen(id: state.pathParameters['id']!),
+          ),
+          GoRoute(
+            path: '/dmr/imprest/:id/edit',
+            builder: (_, state) => DmrCreateScreen(
+              recordId: state.pathParameters['id'],
+              recordKind: 'imprest',
+            ),
           ),
 
           GoRoute(path: '/inventory', builder: (_, _) => const InventoryHomeScreen()),
@@ -130,17 +178,29 @@ GoRouter createAppRouter(
             path: '/inventory/imr/:id',
             builder: (_, state) => ImrDetailScreen(id: state.pathParameters['id']!),
           ),
+          GoRoute(
+            path: '/inventory/imr/:id/edit',
+            builder: (_, state) => ImrCreateScreen(recordId: state.pathParameters['id']),
+          ),
           GoRoute(path: '/inventory/transfers', builder: (_, _) => const TransferListScreen()),
           GoRoute(path: '/inventory/transfers/new', builder: (_, _) => const TransferCreateScreen()),
           GoRoute(
             path: '/inventory/transfers/:id',
             builder: (_, state) => TransferDetailScreen(id: state.pathParameters['id']!),
           ),
+          GoRoute(
+            path: '/inventory/transfers/:id/edit',
+            builder: (_, state) => TransferCreateScreen(transferId: state.pathParameters['id']),
+          ),
           GoRoute(path: '/inventory/scrap', builder: (_, _) => const ScrapListScreen()),
           GoRoute(path: '/inventory/scrap/new', builder: (_, _) => const ScrapCreateScreen()),
           GoRoute(
             path: '/inventory/scrap/:id',
             builder: (_, state) => ScrapDetailScreen(id: state.pathParameters['id']!),
+          ),
+          GoRoute(
+            path: '/inventory/scrap/:id/edit',
+            builder: (_, state) => ScrapCreateScreen(recordId: state.pathParameters['id']),
           ),
 
           GoRoute(path: '/pms', builder: (_, _) => const PmsHomeScreen()),

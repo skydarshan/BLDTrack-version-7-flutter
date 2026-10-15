@@ -11,6 +11,7 @@ import '../../../core/network/api_client.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/api_helpers.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../auth/providers/auth_provider.dart';
 import '../services/pms_services.dart';
 import '../utils/pms_constants.dart';
 import '../widgets/media_widgets.dart';
@@ -38,6 +39,10 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen>
   bool _mediaBusy = false;
   String? _mediaError;
   List<PendingFile> _pendingMedia = [];
+  List<Map<String, dynamic>> _comments = [];
+  String? _commentsError;
+  bool _commentBusy = false;
+  final _commentCtrl = TextEditingController();
   Map<String, dynamic>? _importPreview;
   bool _importing = false;
   final _jsonCtrl = TextEditingController();
@@ -45,7 +50,7 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen>
   @override
   void initState() {
     super.initState();
-    _tabs = TabController(length: 6, vsync: this);
+    _tabs = TabController(length: 7, vsync: this);
     _tabs.addListener(() {
       if (_tabs.indexIsChanging) return;
       _onTab(_tabs.index);
@@ -56,6 +61,7 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen>
   @override
   void dispose() {
     _tabs.dispose();
+    _commentCtrl.dispose();
     _jsonCtrl.dispose();
     super.dispose();
   }
@@ -96,18 +102,119 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen>
   Future<void> _onTab(int index) async {
     final api = context.read<PmsServices>();
     try {
-      if (index == 2) {
+      if (index == 1) {
+        await _loadComments();
+      } else if (index == 3) {
         final tree = await api.projects.getTaskTree(widget.projectId);
         if (mounted) setState(() => _tree = tree);
-      } else if (index == 3) {
+      } else if (index == 4) {
         final timeline = await api.projects.getTaskTimeline(widget.projectId);
         if (mounted) setState(() => _timeline = timeline);
-      } else if (index == 4) {
+      } else if (index == 5) {
         final board = await api.tasks.board(projectId: widget.projectId);
         if (mounted) setState(() => _board = board);
       }
     } on ApiException catch (e) {
       if (mounted) showPmsSnack(context, e.message, error: true);
+    }
+  }
+
+  Future<void> _loadComments() async {
+    try {
+      final rows = await context.read<PmsServices>().projects.listComments(widget.projectId);
+      if (!mounted) return;
+      setState(() {
+        _comments = rows;
+        _commentsError = null;
+      });
+    } on ApiException catch (e) {
+      if (mounted) setState(() => _commentsError = e.message);
+    }
+  }
+
+  bool _ownsComment(Map<String, dynamic> row) {
+    final me = context.read<AuthProvider>().user?.id;
+    if (me == null || me.isEmpty) return false;
+    return idOf(row['created_by']) == me;
+  }
+
+  Future<void> _sendComment() async {
+    final text = _commentCtrl.text.trim();
+    if (text.isEmpty) {
+      showPmsSnack(context, 'Enter a comment', error: true);
+      return;
+    }
+    setState(() => _commentBusy = true);
+    try {
+      await context.read<PmsServices>().projects.addComment(widget.projectId, {'body': text});
+      if (!mounted) return;
+      _commentCtrl.clear();
+      await _loadComments();
+    } on ApiException catch (e) {
+      if (mounted) showPmsSnack(context, e.message, error: true);
+    } finally {
+      if (mounted) setState(() => _commentBusy = false);
+    }
+  }
+
+  Future<void> _editComment(Map<String, dynamic> row) async {
+    final id = idOf(row);
+    if (id == null) return;
+    final ctrl = TextEditingController(text: row['body']?.toString() ?? '');
+    final saved = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Edit comment'),
+        content: TextField(
+          controller: ctrl,
+          maxLines: 4,
+          autofocus: true,
+          decoration: const InputDecoration(hintText: 'Comment'),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, ctrl.text.trim()), child: const Text('Save')),
+        ],
+      ),
+    );
+    ctrl.dispose();
+    if (saved == null || !mounted) return;
+    final hasPhotos = row['photos'] is List && (row['photos'] as List).isNotEmpty;
+    if (saved.isEmpty && !hasPhotos) {
+      showPmsSnack(context, 'Comment text is required', error: true);
+      return;
+    }
+    setState(() => _commentBusy = true);
+    try {
+      await context.read<PmsServices>().projects.updateComment(widget.projectId, id, {'body': saved});
+      if (!mounted) return;
+      await _loadComments();
+    } on ApiException catch (e) {
+      if (mounted) showPmsSnack(context, e.message, error: true);
+    } finally {
+      if (mounted) setState(() => _commentBusy = false);
+    }
+  }
+
+  Future<void> _deleteComment(Map<String, dynamic> row) async {
+    final id = idOf(row);
+    if (id == null) return;
+    final ok = await confirmAction(
+      context,
+      title: 'Delete comment?',
+      message: 'This comment will be removed.',
+      confirmLabel: 'Delete',
+    );
+    if (!ok || !mounted) return;
+    setState(() => _commentBusy = true);
+    try {
+      await context.read<PmsServices>().projects.deleteComment(widget.projectId, id);
+      if (!mounted) return;
+      await _loadComments();
+    } on ApiException catch (e) {
+      if (mounted) showPmsSnack(context, e.message, error: true);
+    } finally {
+      if (mounted) setState(() => _commentBusy = false);
     }
   }
 
@@ -531,6 +638,7 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen>
           isScrollable: true,
           tabs: const [
             Tab(text: 'Overview'),
+            Tab(text: 'Comments'),
             Tab(text: 'Media'),
             Tab(text: 'Hierarchy'),
             Tab(text: 'Timeline'),
@@ -554,6 +662,18 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen>
                       overview: _overview,
                       topTasks: topTasks,
                       onOpenTask: (id) => context.push('/pms/tasks/$id'),
+                    ),
+                    _CommentsTab(
+                      comments: _comments,
+                      error: _commentsError,
+                      busy: _commentBusy,
+                      archived: project?['status']?.toString() == 'archived',
+                      controller: _commentCtrl,
+                      owns: _ownsComment,
+                      onSend: _sendComment,
+                      onEdit: _editComment,
+                      onDelete: _deleteComment,
+                      onRetry: _loadComments,
                     ),
                     _MediaTab(
                       project: project ?? const {},
@@ -634,11 +754,19 @@ class _OverviewTab extends StatelessWidget {
                   style: const TextStyle(color: AppTheme.muted),
                 ),
                 Text(
-                  'Timeline: ${formatDate(project?['timeline']?['start_date'])} → ${formatDate(project?['timeline']?['end_date'])}',
+                  'Planned: ${formatDate(project?['timeline']?['start_date'])} → ${formatDate(project?['timeline']?['end_date'])}',
+                  style: const TextStyle(color: AppTheme.muted),
+                ),
+                Text(
+                  'Actual: ${formatDate(project?['timeline']?['actual_start_date'])} → ${formatDate(project?['timeline']?['actual_end_date'])}',
                   style: const TextStyle(color: AppTheme.muted),
                 ),
                 Text(
                   'Manager: ${labelOf(project?['project_manager'])}',
+                  style: const TextStyle(color: AppTheme.muted),
+                ),
+                Text(
+                  'Coordinator: ${labelOf(project?['default_coordinator'])}',
                   style: const TextStyle(color: AppTheme.muted),
                 ),
                 if (counts.isNotEmpty) ...[
@@ -678,6 +806,120 @@ class _OverviewTab extends StatelessWidget {
               ),
             );
           }),
+      ],
+    );
+  }
+}
+
+class _CommentsTab extends StatelessWidget {
+  const _CommentsTab({
+    required this.comments,
+    required this.error,
+    required this.busy,
+    required this.archived,
+    required this.controller,
+    required this.owns,
+    required this.onSend,
+    required this.onEdit,
+    required this.onDelete,
+    required this.onRetry,
+  });
+
+  final List<Map<String, dynamic>> comments;
+  final String? error;
+  final bool busy;
+  final bool archived;
+  final TextEditingController controller;
+  final bool Function(Map<String, dynamic> row) owns;
+  final VoidCallback onSend;
+  final ValueChanged<Map<String, dynamic>> onEdit;
+  final ValueChanged<Map<String, dynamic>> onDelete;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      padding: AppTheme.formPadding,
+      children: [
+        if (error != null) ErrorBanner(message: error!, onRetry: onRetry),
+        if (comments.isEmpty)
+          const Padding(
+            padding: EdgeInsets.only(bottom: 12),
+            child: Text('No comments yet', style: TextStyle(color: AppTheme.muted)),
+          )
+        else
+          ...comments.map((row) {
+            final mine = owns(row);
+            final photos = row['photos'] is List ? row['photos'] as List : const [];
+            final body = row['body']?.toString().trim() ?? '';
+            return Card(
+              margin: const EdgeInsets.only(bottom: 8),
+              child: ListTile(
+                title: Text(body.isEmpty ? 'Photo comment' : body),
+                subtitle: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '${labelOf(row['created_by'])} · ${formatDateTime(row['updatedAt'] ?? row['createdAt'])}',
+                    ),
+                    for (final photo in photos)
+                      if (attachmentUrl(photo).isNotEmpty)
+                        TextButton(
+                          style: TextButton.styleFrom(
+                            padding: EdgeInsets.zero,
+                            minimumSize: const Size(0, 32),
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          ),
+                          onPressed: () => openAttachment(context, attachmentUrl(photo)),
+                          child: Text(attachmentName(photo)),
+                        ),
+                  ],
+                ),
+                isThreeLine: photos.isNotEmpty,
+                trailing: mine
+                    ? PopupMenuButton<String>(
+                        enabled: !busy,
+                        onSelected: (value) {
+                          if (value == 'edit') onEdit(row);
+                          if (value == 'delete') onDelete(row);
+                        },
+                        itemBuilder: (_) => const [
+                          PopupMenuItem(value: 'edit', child: Text('Edit')),
+                          PopupMenuItem(
+                            value: 'delete',
+                            child: Text('Delete', style: TextStyle(color: AppTheme.danger)),
+                          ),
+                        ],
+                      )
+                    : null,
+              ),
+            );
+          }),
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: controller,
+                enabled: !archived && !busy,
+                minLines: 1,
+                maxLines: 4,
+                decoration: InputDecoration(
+                  hintText: archived ? 'Project is archived' : 'Add a comment',
+                ),
+              ),
+            ),
+            IconButton(
+              onPressed: archived || busy ? null : onSend,
+              icon: busy
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.send),
+            ),
+          ],
+        ),
       ],
     );
   }

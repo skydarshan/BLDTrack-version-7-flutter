@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/api_helpers.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/widgets/sort_menu.dart';
 import '../../../core/theme/modern_widgets.dart';
 import '../services/pms_services.dart';
 import '../utils/pms_constants.dart';
@@ -28,6 +29,7 @@ class _ProjectsListScreenState extends State<ProjectsListScreen> {
   String? _error;
   List<Map<String, dynamic>> _items = [];
   String _search = '';
+  int _loadGen = 0;
   String? _status;
   String? _priority;
   String? _siteId;
@@ -36,6 +38,8 @@ class _ProjectsListScreenState extends State<ProjectsListScreen> {
   bool _bootstrapped = false;
   List<OptionItem> _sites = const [];
   int _page = 1;
+  String _sortBy = 'createdAt';
+  String _sortOrder = 'desc';
   bool _hasMore = false;
 
   @override
@@ -93,6 +97,8 @@ class _ProjectsListScreenState extends State<ProjectsListScreen> {
   }
 
   Future<void> _load({bool reset = false}) async {
+    final gen = ++_loadGen;
+    final search = _search.trim();
     if (reset) {
       _page = 1;
       setState(() {
@@ -104,14 +110,14 @@ class _ProjectsListScreenState extends State<ProjectsListScreen> {
       final res = await context.read<PmsServices>().projects.list({
         'page': _page,
         'limit': 20,
-        'search': _search,
+        if (search.isNotEmpty) 'search': search,
         'status': _status,
         'priority': _priority,
         'site': _siteId,
-        'sortBy': 'createdAt',
-        'sortOrder': 'desc',
+        'sortBy': _sortBy,
+        'sortOrder': _sortOrder,
       });
-      if (!mounted) return;
+      if (!mounted || gen != _loadGen) return;
       final totalPages = res.pagination?['totalPages'];
       setState(() {
         _items = reset ? res.items : [..._items, ...res.items];
@@ -119,13 +125,13 @@ class _ProjectsListScreenState extends State<ProjectsListScreen> {
         _loading = false;
       });
     } on ApiException catch (e) {
-      if (!mounted) return;
+      if (!mounted || gen != _loadGen) return;
       setState(() {
         _error = e.message;
         _loading = false;
       });
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || gen != _loadGen) return;
       setState(() {
         _error = e.toString();
         _loading = false;
@@ -231,7 +237,29 @@ class _ProjectsListScreenState extends State<ProjectsListScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       extendBody: true,
-      appBar: const ModernAppBar(title: 'Projects'),
+      appBar: ModernAppBar(
+        title: 'Projects',
+        actions: [
+          SortMenuButton(
+            choices: const [
+              SortChoice(by: 'createdAt', order: 'desc', label: 'Newest'),
+              SortChoice(by: 'createdAt', order: 'asc', label: 'Oldest'),
+              SortChoice(by: 'project_name', order: 'asc', label: 'Name A–Z'),
+              SortChoice(by: 'project_name', order: 'desc', label: 'Name Z–A'),
+              SortChoice(by: 'status', order: 'asc', label: 'Status'),
+            ],
+            sortBy: _sortBy,
+            sortOrder: _sortOrder,
+            onSelected: (by, order) {
+              setState(() {
+                _sortBy = by;
+                _sortOrder = order;
+              });
+              _load(reset: true);
+            },
+          ),
+        ],
+      ),
       floatingActionButton: FloatingActionButton(
         onPressed: () async {
           final created = await context.push<bool>('/pms/projects/new');
@@ -247,7 +275,7 @@ class _ProjectsListScreenState extends State<ProjectsListScreen> {
             child: TextField(
               controller: _searchCtrl,
               decoration: const InputDecoration(
-                hintText: 'Search projects…',
+                hintText: 'Search name, code or site…',
                 prefixIcon: Icon(Icons.search),
               ),
               onChanged: _onSearchChanged,
@@ -310,7 +338,11 @@ class _ProjectsListScreenState extends State<ProjectsListScreen> {
               child: _loading && _items.isEmpty
                   ? const CenteredScrollLoader()
                   : _items.isEmpty
-                      ? EmptyListBody(message: 'No projects found')
+                      ? EmptyListBody(
+                          message: _search.trim().isEmpty && _siteId == null
+                              ? 'No projects found'
+                              : 'No projects match this search',
+                        )
                       : ListView.builder(
                           padding: AppTheme.listPadding,
                           itemCount: _items.length + (_hasMore ? 1 : 0),
@@ -364,15 +396,9 @@ class _ProjectsListScreenState extends State<ProjectsListScreen> {
                                           _archive(p, archive: false);
                                         } else if (v == 'delete') {
                                           _delete(p);
-                                        } else if (v == 'edit' && id != null) {
-                                          context.push('/pms/projects/$id/edit');
                                         }
                                       },
                                       itemBuilder: (_) => [
-                                        const PopupMenuItem(
-                                          value: 'edit',
-                                          child: Text('Edit'),
-                                        ),
                                         if (archived)
                                           const PopupMenuItem(
                                             value: 'unarchive',

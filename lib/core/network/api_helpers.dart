@@ -245,6 +245,7 @@ List<dynamic> unwrapDataList(Map<String, dynamic>? root) {
       'siteStaff',
       'roles',
       'projects',
+      'comments',
       'requisitionRequests',
       'transfers',
     ];
@@ -421,15 +422,78 @@ String itemLabel(dynamic line, {String fallback = '—'}) {
   if (line is String) return _readableName(line) ?? fallback;
   if (line is! Map) return labelOf(line, fallback: fallback);
   final map = Map<String, dynamic>.from(line);
-  return labelOf(
-    firstNonNull(map, ['item_name', 'itemName', 'item_id', 'item', 'name']),
-    fallback: fallback,
-  );
+  for (final key in [
+    'item_name',
+    'itemName',
+    'name',
+    'item_id',
+    'item',
+    'category_id',
+    'sub_category_id',
+  ]) {
+    final value = map[key];
+    if (value == null) continue;
+    if (value is String && value.trim().isEmpty) continue;
+    final label = labelOf(value, fallback: '');
+    if (label.isNotEmpty) return label;
+  }
+  return fallback;
+}
+
+String siteNameOf(Map<String, dynamic> row) {
+  final direct = labelOf(row['site'] ?? row['site_id'], fallback: '');
+  if (direct.isNotEmpty) return direct;
+  final named = _readableName(row['site_name']);
+  if (named != null) return named;
+  final rr = row['requisition_request_id'];
+  if (rr is Map) {
+    final nested = labelOf(rr['site'], fallback: '');
+    if (nested.isNotEmpty) return nested;
+  }
+  return '';
+}
+
+String vendorNamesOf(Map<String, dynamic> row) {
+  final names = <String>[];
+  void add(dynamic value) {
+    final text = value is String ? (_readableName(value) ?? '') : labelOf(value, fallback: '');
+    final trimmed = text.trim();
+    if (trimmed.isEmpty || names.contains(trimmed)) return;
+    names.add(trimmed);
+  }
+
+  final detail = row['vendor_detail'];
+  if (detail is Map) add(detail['vendor_name']);
+  add(row['vendor_name']);
+  add(row['vendor']);
+  add(row['vendor_id']);
+
+  void addVendorList(dynamic raw) {
+    if (raw is! List) return;
+    for (final entry in raw) {
+      if (entry is! Map) continue;
+      add(entry['vendor_name']);
+      add(entry['vendor_id']);
+      add(entry['vendor']);
+    }
+  }
+
+  addVendorList(row['vendors_total']);
+  addVendorList(row['vendors']);
+  final items = row['items'];
+  if (items is List) {
+    for (final line in items) {
+      if (line is! Map) continue;
+      addVendorList(line['vendors']);
+    }
+  }
+  return names.join(', ');
 }
 
 List<Map<String, dynamic>> lineItemsOf(Map<String, dynamic>? doc) {
   if (doc == null) return const [];
-  final raw = doc['items'];
+  dynamic raw = doc['items'];
+  if (raw is! List || raw.isEmpty) raw = doc['dmr_items'];
   if (raw is! List) return const [];
   final items = asMapList(raw);
   doc['items'] = items;

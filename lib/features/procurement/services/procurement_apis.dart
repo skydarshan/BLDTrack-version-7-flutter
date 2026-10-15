@@ -64,9 +64,22 @@ class RequisitionRequestsApi {
     return unwrapDataMap(res.data);
   }
 
-  Future<List<Map<String, dynamic>>> getHistory(String id) async {
+  /// Approval rows are `histories`. File downloads are `file_histories`.
+  Future<({List<Map<String, dynamic>> histories, List<Map<String, dynamic>> fileHistories})>
+      getHistory(String id) async {
     final res = await _client.get<Map<String, dynamic>>('/requisition-requests/$id/history');
-    return asMapList(unwrapDataList(res.data));
+    final data = unwrapDataMap(res.data);
+    List<Map<String, dynamic>> read(String key) {
+      final raw = data[key];
+      if (raw is! List) return const [];
+      return asMapList(raw);
+    }
+
+    final fileHistories = read('file_histories');
+    return (
+      histories: read('histories'),
+      fileHistories: fileHistories.isNotEmpty ? fileHistories : read('fileHistories'),
+    );
   }
 
   Future<int?> getNextNumber(String site) async {
@@ -101,15 +114,41 @@ class RequisitionRequestsApi {
     return unwrapDataMap(res.data);
   }
 
-  Future<Map<String, dynamic>> update(String id, Map<String, dynamic> data) async {
-    final res = await _client.put<Map<String, dynamic>>('/requisition-requests/$id', data: data);
+  Future<Map<String, dynamic>> update(
+    String id,
+    Map<String, dynamic> data, {
+    List<MapEntry<String, MultipartFileEntry>> files = const [],
+  }) async {
+    if (files.isEmpty) {
+      final res = await _client.put<Map<String, dynamic>>('/requisition-requests/$id', data: data);
+      return unwrapDataMap(res.data);
+    }
+    final res = await _client.postNamedMultipart<Map<String, dynamic>>(
+      '/requisition-requests/$id',
+      payload: data,
+      extraFiles: files,
+      put: true,
+    );
     return unwrapDataMap(res.data);
   }
 
-  Future<Map<String, dynamic>> superEdit(String id, Map<String, dynamic> data) async {
-    final res = await _client.put<Map<String, dynamic>>(
+  Future<Map<String, dynamic>> superEdit(
+    String id,
+    Map<String, dynamic> data, {
+    List<MapEntry<String, MultipartFileEntry>> files = const [],
+  }) async {
+    if (files.isEmpty) {
+      final res = await _client.put<Map<String, dynamic>>(
+        '/requisition-requests/$id/super-edit',
+        data: data,
+      );
+      return unwrapDataMap(res.data);
+    }
+    final res = await _client.postNamedMultipart<Map<String, dynamic>>(
       '/requisition-requests/$id/super-edit',
-      data: data,
+      payload: data,
+      extraFiles: files,
+      put: true,
     );
     return unwrapDataMap(res.data);
   }
@@ -239,6 +278,8 @@ class RateComparativesApi {
     return unwrapDataMap(res.data);
   }
 
+  Future<void> delete(String id) => _client.delete<Map<String, dynamic>>('/rate-comparatives/$id');
+
   Future<Map<String, dynamic>> analyze(String id, {bool refresh = false}) async {
     final path = refresh
         ? '/ai/rate-comparatives/$id/analyze/refresh'
@@ -255,6 +296,49 @@ class RateComparativesApi {
 
   Future<Map<String, dynamic>> vendorScorecard(String vendorId) async {
     final res = await _client.get<Map<String, dynamic>>('/ai/vendors/$vendorId/scorecard');
+    return unwrapDataMap(res.data);
+  }
+
+  /// Saves a comparative. Quotation files use `vendors_total_<index>_vendor_quotation`.
+  Future<Map<String, dynamic>> saveForm(
+    String path,
+    Map<String, dynamic> data, {
+    Map<String, MultipartFileEntry> files = const {},
+  }) async {
+    final res = files.isEmpty
+        ? await _client.put<Map<String, dynamic>>(path, data: data)
+        : await _client.postNamedMultipart<Map<String, dynamic>>(
+            path,
+            payload: data,
+            namedFiles: files,
+            put: true,
+          );
+    return unwrapDataMap(res.data);
+  }
+
+  Future<Map<String, dynamic>> extractQuotation(
+    String id, {
+    String? vendorId,
+    MultipartFileEntry? file,
+    String? fileUrl,
+  }) async {
+    if (file != null) {
+      final res = await _client.postNamedMultipart<Map<String, dynamic>>(
+        '/ai/rate-comparatives/$id/extract-quotation',
+        fields: {
+          if (vendorId != null && vendorId.isNotEmpty) 'vendor_id': vendorId,
+        },
+        namedFiles: {'quotation': file},
+      );
+      return unwrapDataMap(res.data);
+    }
+    final res = await _client.post<Map<String, dynamic>>(
+      '/ai/rate-comparatives/$id/extract-quotation',
+      data: {
+        if (vendorId != null && vendorId.isNotEmpty) 'vendor_id': vendorId,
+        if (fileUrl != null && fileUrl.isNotEmpty) 'file_url': fileUrl,
+      },
+    );
     return unwrapDataMap(res.data);
   }
 }
@@ -284,7 +368,13 @@ class RequisitionOrdersApi {
 
   Future<Map<String, dynamic>> getById(String id) async {
     final res = await _client.get<Map<String, dynamic>>('/requisition-orders/$id');
-    return unwrapDataMap(res.data);
+    final doc = unwrapDataMap(res.data);
+    final root = res.data;
+    if (root != null) {
+      doc['_rejectPO'] = root['rejectPO'] == true;
+      doc['_canRevise'] = root['revision'] != false;
+    }
+    return doc;
   }
 
   Future<Map<String, dynamic>> nextNumber([Map<String, dynamic>? params]) async {
@@ -322,6 +412,9 @@ class RequisitionOrdersApi {
     final res = await _client.put<Map<String, dynamic>>('/requisition-orders/$id', data: data);
     return unwrapDataMap(res.data);
   }
+
+  Future<void> delete(String id) =>
+      _client.delete<Map<String, dynamic>>('/requisition-orders/$id');
 
   Future<List<Map<String, dynamic>>> uniqueVendors([Map<String, dynamic>? params]) async {
     final res = await _client.get<Map<String, dynamic>>(

@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/api_helpers.dart';
+import '../../../core/widgets/sort_menu.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/theme/modern_widgets.dart';
 import '../../../core/utils/list_query.dart';
@@ -34,6 +35,8 @@ class _TaskApprovalsScreenState extends State<TaskApprovalsScreen> {
   int _pendingPage = 1;
   bool _readyHasMore = false;
   bool _pendingHasMore = false;
+  String _sortBy = 'updatedAt';
+  String _sortOrder = 'desc';
 
   int get _pageLimit => _search.trim().isEmpty ? 20 : 100;
 
@@ -100,6 +103,8 @@ class _TaskApprovalsScreenState extends State<TaskApprovalsScreen> {
         final res = await api.readyForCompletion({
           'page': _readyPage,
           'limit': limit,
+          'sortBy': _sortBy,
+          'sortOrder': _sortOrder,
           if (query.isNotEmpty) 'search': query,
         });
         if (!mounted || _search.trim() != query) return;
@@ -112,6 +117,8 @@ class _TaskApprovalsScreenState extends State<TaskApprovalsScreen> {
         final rows = await api.pendingApprovals({
           'page': _pendingPage,
           'limit': limit,
+          'sortBy': _sortBy,
+          'sortOrder': _sortOrder,
           if (query.isNotEmpty) 'search': query,
         });
         if (!mounted || _search.trim() != query) return;
@@ -292,7 +299,30 @@ class _TaskApprovalsScreenState extends State<TaskApprovalsScreen> {
     return Scaffold(
       extendBody: true,
       backgroundColor: AppTheme.surface,
-      appBar: const ModernAppBar(title: 'Task approvals'),
+      appBar: ModernAppBar(
+        title: 'Task approvals',
+        actions: [
+          SortMenuButton(
+            choices: const [
+              SortChoice(by: 'updatedAt', order: 'desc', label: 'Recently updated'),
+              SortChoice(by: 'updatedAt', order: 'asc', label: 'Least recently updated'),
+              SortChoice(by: 'title', order: 'asc', label: 'Title A–Z'),
+              SortChoice(by: 'due_date', order: 'asc', label: 'Due date'),
+            ],
+            sortBy: _sortBy,
+            sortOrder: _sortOrder,
+            onSelected: (by, order) {
+              setState(() {
+                _sortBy = by;
+                _sortOrder = order;
+                _readyPage = 1;
+                _pendingPage = 1;
+              });
+              _load(reset: true);
+            },
+          ),
+        ],
+      ),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [

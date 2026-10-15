@@ -125,7 +125,20 @@ class DmrApi {
     return asMapList(unwrapDataList(res.data));
   }
 
-  Future<Map<String, dynamic>> updateEntry(String id, Map<String, dynamic> data) async {
+  Future<Map<String, dynamic>> updateEntry(
+    String id,
+    Map<String, dynamic> data, {
+    MultipartFileEntry? document,
+  }) async {
+    if (document != null) {
+      final res = await _client.postNamedMultipart<Map<String, dynamic>>(
+        '/dmr-entries/$id',
+        payload: data,
+        namedFiles: {'invoice_or_challan_doc': document},
+        put: true,
+      );
+      return unwrapDataMap(res.data);
+    }
     final res = await _client.put<Map<String, dynamic>>('/dmr-entries/$id', data: data);
     return unwrapDataMap(res.data);
   }
@@ -195,6 +208,27 @@ class DmrApi {
       pagination: unwrapPagination(res.data),
     );
   }
+
+  Future<Map<String, dynamic>> updateImprest(
+    String id,
+    Map<String, dynamic> data, {
+    MultipartFileEntry? document,
+  }) async {
+    if (document != null) {
+      final res = await _client.postNamedMultipart<Map<String, dynamic>>(
+        '/imperest-dmr-entries/$id',
+        payload: data,
+        namedFiles: {'invoice_or_challan_doc': document},
+        put: true,
+      );
+      return unwrapDataMap(res.data);
+    }
+    final res = await _client.put<Map<String, dynamic>>('/imperest-dmr-entries/$id', data: data);
+    return unwrapDataMap(res.data);
+  }
+
+  Future<void> deleteImprest(String id) =>
+      _client.delete<Map<String, dynamic>>('/imperest-dmr-entries/$id');
 
   Future<Map<String, dynamic>> createImprest(
     Map<String, dynamic> payload, {
@@ -295,7 +329,7 @@ class DmrApi {
       '/credit-notes',
       payload: payload,
       namedFiles: {
-        'invoice_or_challan_doc': ?document,
+        'creditNoteDoc': ?document,
       },
     );
     return unwrapDataMap(res.data);

@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/api_helpers.dart';
+import '../../../core/widgets/sort_menu.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/form_validation_helpers.dart';
 import '../../../core/utils/list_query.dart';
@@ -14,6 +15,7 @@ import '../../pms/widgets/media_widgets.dart';
 import '../../pms/widgets/pickers.dart';
 import '../../pms/widgets/pms_widgets.dart';
 import '../../settings/services/settings_apis.dart';
+import 'dmr_finance_screens.dart';
 
 class DmrStatusScreen extends StatefulWidget {
   const DmrStatusScreen({super.key});
@@ -23,9 +25,10 @@ class DmrStatusScreen extends StatefulWidget {
 }
 
 class _DmrFeed {
-  const _DmrFeed({this.rows = const [], this.error});
+  const _DmrFeed({this.rows = const [], this.error, this.hasMore = false});
   final List<Map<String, dynamic>> rows;
   final Object? error;
+  final bool hasMore;
 }
 
 class _DmrStatusScreenState extends State<DmrStatusScreen> {
@@ -40,9 +43,14 @@ class _DmrStatusScreenState extends State<DmrStatusScreen> {
   String? _draftSiteId;
   String _draftSiteLabel = '';
   DateTime? _draftDate;
-  String? _expandedId;
   List<Map<String, dynamic>> _sites = [];
   final _searchCtrl = TextEditingController();
+  int _page = 1;
+  String _sortBy = 'createdAt';
+  String _sortOrder = 'desc';
+  bool _hasMore = false;
+  bool _loadingMore = false;
+  static const _pageSize = 20;
   int _countAll = 0;
   int _countPending = 0;
   int _countPartial = 0;
@@ -75,11 +83,9 @@ class _DmrStatusScreenState extends State<DmrStatusScreen> {
     super.dispose();
   }
 
-  Future<_DmrFeed> _loadFeed(
-    Future<List<Map<String, dynamic>>> Function() load,
-  ) async {
+  Future<_DmrFeed> _loadFeed(Future<_DmrFeed> Function() load) async {
     try {
-      return _DmrFeed(rows: await load());
+      return await load();
     } on ApiException catch (e) {
       return _DmrFeed(error: e);
     } catch (e) {
@@ -92,7 +98,7 @@ class _DmrStatusScreenState extends State<DmrStatusScreen> {
   bool _onSelectedDay(Map<String, dynamic> row) {
     final day = _date;
     if (day == null) return true;
-    final raw = firstNonNull(row, ['createdAt', 'created_at', 'invoice_date', 'gate_entry_date']);
+    final raw = firstNonNull(row, ['date', 'createdAt', 'created_at', 'invoice_date', 'gate_entry_date']);
     final parsed = DateTime.tryParse(raw?.toString() ?? '');
     if (parsed == null) return false;
     final local = parsed.toLocal();
@@ -136,10 +142,22 @@ class _DmrStatusScreenState extends State<DmrStatusScreen> {
     } catch (_) {}
   }
 
-  Future<void> _load() async {
+  bool _pageHasMore(PaginatedResult res, int page) {
+    final pages = res.pagination?['totalPages'];
+    if (pages is num) return page < pages.toInt();
+    return res.items.length >= _pageSize;
+  }
+
+  Future<void> _load({bool reset = true}) async {
+    if (!reset && (!_hasMore || _loadingMore)) return;
+    final page = reset ? 1 : _page + 1;
     setState(() {
-      _loading = true;
-      _error = null;
+      if (reset) {
+        _loading = true;
+        _error = null;
+      } else {
+        _loadingMore = true;
+      }
     });
     try {
       final api = context.read<AppServices>().dmr;
@@ -152,50 +170,61 @@ class _DmrStatusScreenState extends State<DmrStatusScreen> {
         if (wantOrders)
           _loadFeed(() async {
             final res = await api.listOrders({
-              'page': 1,
-              'limit': 100,
+              'page': page,
+              'limit': _pageSize,
+              'sortBy': _sortBy,
+              'sortOrder': _sortOrder,
               if (search.isNotEmpty) 'search': search,
               if (_siteId != null) 'site': _siteId,
               if (day != null) 'dateFrom': day,
               if (day != null) 'dateTo': day,
               if (_status.isNotEmpty && _orderStatuses.contains(_status)) 'status': _status,
             });
-            return res.items
-                .map((e) => {...e, '_dmrKind': 'order'})
-                .toList();
+            return _DmrFeed(
+              hasMore: _pageHasMore(res, page),
+              rows: res.items.map((e) => {...e, '_dmrKind': 'order'}).toList(),
+            );
           })
         else
           Future.value(const _DmrFeed()),
         if (wantEntries)
           _loadFeed(() async {
             final res = await api.listEntries({
-              'page': 1,
-              'limit': 100,
+              'page': page,
+              'limit': _pageSize,
+              'sortBy': _sortBy,
+              'sortOrder': _sortOrder,
               if (search.isNotEmpty) 'search': search,
               if (_siteId != null) 'site': _siteId,
               if (day != null) 'date_from': day,
               if (day != null) 'date_to': day,
               if (_status == 'completed') 'status': 'completed',
             });
-            return res.items
-                .map((e) => {...e, '_dmrKind': 'entry'})
-                .toList();
+            return _DmrFeed(
+              hasMore: _pageHasMore(res, page),
+              rows: res.items.map((e) => {...e, '_dmrKind': 'entry'}).toList(),
+            );
           })
         else
           Future.value(const _DmrFeed()),
         if (wantImprest)
           _loadFeed(() async {
             final res = await api.listImprest({
-              'page': 1,
-              'limit': 100,
+              'page': page,
+              'limit': _pageSize,
+              'sortBy': _sortBy,
+              'sortOrder': _sortOrder,
               if (search.isNotEmpty) 'search': search,
               if (_siteId != null) 'site': _siteId,
               if (_status == 'completed') 'status': 'completed',
             });
-            return res.items
-                .map((e) => {...e, '_dmrKind': 'imprest'})
-                .where(_onSelectedDay)
-                .toList();
+            return _DmrFeed(
+              hasMore: _pageHasMore(res, page),
+              rows: res.items
+                  .map((e) => {...e, '_dmrKind': 'imprest'})
+                  .where(_onSelectedDay)
+                  .toList(),
+            );
           })
         else
           Future.value(const _DmrFeed()),
@@ -207,31 +236,55 @@ class _DmrStatusScreenState extends State<DmrStatusScreen> {
       ];
       final errors = results.map((r) => r.error).whereType<Object>().toList();
       if (!mounted) return;
-      if (merged.isEmpty && errors.isNotEmpty) {
+      if (reset && merged.isEmpty && errors.isNotEmpty) {
         final first = errors.first;
         setState(() {
           _items = const [];
+          _page = 1;
+          _hasMore = false;
           _error = first is ApiException ? first.message : first.toString();
           _loading = false;
+          _loadingMore = false;
         });
         return;
       }
+      if (!reset && merged.isEmpty && errors.isNotEmpty) {
+        final first = errors.first;
+        setState(() {
+          _loading = false;
+          _loadingMore = false;
+        });
+        if (mounted) {
+          showPmsSnack(
+            context,
+            first is ApiException ? first.message : first.toString(),
+            error: true,
+          );
+        }
+        return;
+      }
       setState(() {
-        _items = merged;
+        _page = page;
+        _items = reset ? merged : [..._items, ...merged];
+        _hasMore = results.any((feed) => feed.hasMore);
         _loading = false;
+        _loadingMore = false;
       });
-      await _loadCounts(api);
+      if (reset) await _loadCounts(api);
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() {
-        _error = e.message;
+        _error = reset ? e.message : _error;
         _loading = false;
+        _loadingMore = false;
       });
+      if (!reset) showPmsSnack(context, e.message, error: true);
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _error = e.toString();
+        _error = reset ? e.toString() : _error;
         _loading = false;
+        _loadingMore = false;
       });
     }
   }
@@ -260,16 +313,17 @@ class _DmrStatusScreenState extends State<DmrStatusScreen> {
     return _clean(site);
   }
 
-  String _vendorOf(Map<String, dynamic> row) {
-    final detail = row['vendor_detail'];
-    if (detail is Map) {
-      final name = detail['vendor_name']?.toString().trim() ?? '';
-      if (name.isNotEmpty) return name;
+  String _vendorOf(Map<String, dynamic> row) => vendorNamesOf(row);
+
+  String _itemNames(Map<String, dynamic> row) {
+    final names = <String>[];
+    for (final line in _linesOf(row)) {
+      final item = itemLabel(line, fallback: '');
+      final category = _clean(line['category_id']);
+      final name = item.isNotEmpty ? item : category;
+      if (name.isNotEmpty && !names.contains(name)) names.add(name);
     }
-    final named = _clean(row['vendor'] ?? row['vendor_id']);
-    if (named.isNotEmpty) return named;
-    if (row['_dmrKind'] == 'imprest') return 'Cash purchase';
-    return '';
+    return names.join(', ');
   }
 
   List<Map<String, dynamic>> _linesOf(Map<String, dynamic> row) {
@@ -281,22 +335,6 @@ class _DmrStatusScreenState extends State<DmrStatusScreen> {
     ];
   }
 
-  String _titleOf(Map<String, dynamic> row) {
-    final remarks = row['remarks']?.toString().trim() ?? '';
-    if (remarks.isNotEmpty) return remarks;
-    final names = <String>[];
-    for (final line in _linesOf(row)) {
-      final item = itemLabel(line, fallback: '');
-      final category = _clean(line['category_id']);
-      final name = item.isNotEmpty && item != '—' ? item : category;
-      if (name.isNotEmpty) names.add(name);
-    }
-    if (names.isNotEmpty) return names.join(', ');
-    final type = _clean(row['prType'] ?? row['pr_type']);
-    if (type.isNotEmpty) return type;
-    return _clean(row['invoice_number'] ?? row['challan_number']);
-  }
-
   String _statusText(Map<String, dynamic> row) {
     return switch (row['status']?.toString()) {
       'pending' => 'Pending',
@@ -306,24 +344,6 @@ class _DmrStatusScreenState extends State<DmrStatusScreen> {
       'open' => 'Open',
       final other => statusLabel(other),
     };
-  }
-
-  String _lineText(Map<String, dynamic> line) {
-    final item = itemLabel(line, fallback: '');
-    final category = _clean(line['category_id']);
-    final sub = _clean(line['sub_category_id']);
-    final name = item.isNotEmpty && item != '—' ? item : [category, sub].where((p) => p.isNotEmpty).join(' / ');
-    final qty = firstNonNull(line, ['qty', 'received_quantity', 'accepted_quantity', 'po_qty']);
-    final uomRaw = line['uom'];
-    final uom = uomRaw is Map ? _clean(uomRaw['uom_name'] ?? uomRaw) : _clean(uomRaw);
-    final amount = firstNonNull(line, ['amount', 'total_amount']);
-    final remark = _clean(line['remark'] ?? line['remarks']);
-    return [
-      if (name.isNotEmpty) name,
-      if (qty != null) 'Qty $qty${uom.isEmpty ? '' : ' $uom'}',
-      if (amount != null && '$amount'.isNotEmpty) '₹$amount',
-      if (remark.isNotEmpty) remark,
-    ].join(' · ');
   }
 
   String? get _statusFilterLabel => switch (_status) {
@@ -399,7 +419,7 @@ class _DmrStatusScreenState extends State<DmrStatusScreen> {
                         controller: _searchCtrl,
                         textInputAction: TextInputAction.search,
                         decoration: const InputDecoration(
-                          hintText: 'Search RO / PO number...',
+                          hintText: 'Search RO, site, vendor, item...',
                           prefixIcon: Icon(Icons.search),
                         ),
                         onSubmitted: (_) {
@@ -489,100 +509,90 @@ class _DmrStatusScreenState extends State<DmrStatusScreen> {
   }
 
   Widget _statusCard(Map<String, dynamic> row) {
-    final id = idOf(row) ?? '${row['_dmrKind']}-${row['ro_number']}-${row['dmr_no']}';
-    final open = _expandedId == id;
+    final id = idOf(row);
     final number = _clean(row['ro_number']).isNotEmpty ? _clean(row['ro_number']) : _clean(row['dmr_no']);
-    final date = formatDate(firstNonNull(row, ['createdAt', 'created_at', 'poStartDate', 'gate_entry_date', 'invoice_date']));
-    final lines = _linesOf(row);
-    final extra = <(String, String)>[
-      if (_clean(row['dmr_no']).isNotEmpty) ('DMR No', _clean(row['dmr_no'])),
-      if (_clean(row['challan_number']).isNotEmpty) ('Challan', _clean(row['challan_number'])),
-      if (_clean(row['invoice_number']).isNotEmpty) ('Invoice', _clean(row['invoice_number'])),
-      if (_clean(row['gate_register_entry']).isNotEmpty)
-        (
-          'Gate entry',
-          [
-            _clean(row['gate_register_entry']),
-            if (row['gate_entry_date'] != null) formatDate(row['gate_entry_date']),
-            if (_clean(row['gate_entry_time']).isNotEmpty) _clean(row['gate_entry_time']),
-          ].where((part) => part.isNotEmpty && part != '—').join(' · '),
-        ),
-      if (_clean(row['vehicle_number']).isNotEmpty) ('Vehicle', _clean(row['vehicle_number'])),
-      if (_clean(row['mode']).isNotEmpty) ('Mode', _clean(row['mode'])),
-      if (row['total_amount'] != null) ('Amount', '₹${row['total_amount']}'),
-    ];
-    final fields = <(String, String)>[
-      ('Date', date),
-      ('RO No', _orDash(_clean(row['ro_number']))),
-      ('Location', _orDash(_locationOf(row))),
-      ('Title', _orDash(_titleOf(row))),
-      ('Vendor Name', _orDash(_vendorOf(row))),
-      ('Status', _statusText(row)),
-      ...extra,
-    ];
+    final date = formatDate(firstNonNull(row, ['date', 'createdAt', 'created_at', 'poStartDate', 'gate_entry_date', 'invoice_date']));
+    final items = _itemNames(row);
+    final canOpen = looksLikeObjectId(id);
     return Card(
-      child: InkWell(
-        onTap: () => setState(() => _expandedId = open ? null : id),
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(_orDash(number), style: const TextStyle(fontWeight: FontWeight.w700)),
-                        const SizedBox(height: 2),
-                        Text(
-                          '$date · ${_orDash(_locationOf(row))}',
-                          style: const TextStyle(color: Colors.black54, fontSize: 13),
-                        ),
-                        Text(
-                          _orDash(_vendorOf(row)),
-                          style: const TextStyle(fontSize: 13),
-                        ),
-                      ],
-                    ),
-                  ),
-                  StatusChip(status: row['status']?.toString(), label: _statusText(row)),
-                  Icon(open ? Icons.expand_less : Icons.expand_more),
-                ],
-              ),
-              if (open) ...[
-                const Divider(height: 20),
-                for (final field in fields)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 4),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        SizedBox(
-                          width: 108,
-                          child: Text(field.$1, style: const TextStyle(color: Colors.black54, fontSize: 13)),
-                        ),
-                        Expanded(child: Text(field.$2)),
-                      ],
-                    ),
-                  ),
-                if (lines.isNotEmpty) ...[
-                  const SizedBox(height: 4),
-                  const Text('Items', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
-                  for (final line in lines)
-                    if (_lineText(line).isNotEmpty)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 2),
-                        child: Text(_lineText(line), style: const TextStyle(fontSize: 13)),
-                      ),
-                ],
-              ],
-            ],
-          ),
+      child: ListTile(
+        isThreeLine: true,
+        title: Text(_orDash(number), style: const TextStyle(fontWeight: FontWeight.w700)),
+        subtitle: Text(
+          [
+            '$date · ${_orDash(_locationOf(row))}',
+            _orDash(_vendorOf(row)),
+            if (items.isNotEmpty) items,
+          ].join('\n'),
+          maxLines: 3,
+          overflow: TextOverflow.ellipsis,
         ),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            StatusChip(status: row['status']?.toString(), label: _statusText(row)),
+            PopupMenuButton<String>(
+              tooltip: 'More',
+              onSelected: (value) {
+                if (value == 'delete') _deleteRow(row);
+              },
+              itemBuilder: (_) => const [
+                PopupMenuItem(
+                  value: 'delete',
+                  child: Text('Delete', style: TextStyle(color: AppTheme.danger)),
+                ),
+              ],
+            ),
+          ],
+        ),
+        onTap: canOpen ? () => _openRow(row) : null,
       ),
     );
+  }
+
+  Future<void> _openRow(Map<String, dynamic> row) async {
+    final id = idOf(row);
+    final kind = row['_dmrKind']?.toString() ?? '';
+    if (!looksLikeObjectId(id)) return;
+    final path = switch (kind) {
+      'order' => '/dmr/status/$id',
+      'entry' => '/dmr/entries/$id',
+      'imprest' => '/dmr/imprest/$id',
+      _ => null,
+    };
+    if (path == null) return;
+    await context.push<bool>(path);
+    if (mounted) _load();
+  }
+
+  Future<void> _deleteRow(Map<String, dynamic> row) async {
+    final id = idOf(row);
+    final kind = row['_dmrKind']?.toString() ?? '';
+    if (id == null || id.isEmpty) return;
+    final label = switch (kind) {
+      'order' => 'DMR order',
+      'entry' => 'DMR entry',
+      'imprest' => 'cash purchase',
+      _ => 'record',
+    };
+    final ok = await confirmAction(
+      context,
+      title: 'Delete $label?',
+      message: 'This cannot be undone.',
+      confirmLabel: 'Delete',
+    );
+    if (!ok || !mounted) return;
+    try {
+      final dmr = context.read<AppServices>().dmr;
+      if (kind == 'order') await dmr.deleteOrder(id);
+      if (kind == 'entry') await dmr.deleteEntry(id);
+      if (kind == 'imprest') await dmr.deleteImprest(id);
+      if (!mounted) return;
+      showPmsSnack(context, '$label deleted');
+      _load();
+    } on ApiException catch (e) {
+      if (mounted) showPmsSnack(context, e.message, error: true);
+    }
   }
 
   void _openCreate() => context.push('/dmr/create');
@@ -593,6 +603,21 @@ class _DmrStatusScreenState extends State<DmrStatusScreen> {
       appBar: AppBar(
         title: const Text('DMR status'),
         actions: [
+          SortMenuButton(
+            choices: const [
+              SortChoice(by: 'createdAt', order: 'desc', label: 'Newest'),
+              SortChoice(by: 'createdAt', order: 'asc', label: 'Oldest'),
+            ],
+            sortBy: _sortBy,
+            sortOrder: _sortOrder,
+            onSelected: (by, order) {
+              setState(() {
+                _sortBy = by;
+                _sortOrder = order;
+              });
+              _load();
+            },
+          ),
           IconButton(
             tooltip: 'Filters',
             onPressed: _openFilters,
@@ -673,9 +698,22 @@ class _DmrStatusScreenState extends State<DmrStatusScreen> {
                             )
                           : ListView.separated(
                               padding: AppTheme.formPadding,
-                              itemCount: _items.length,
+                              itemCount: _items.length + (_hasMore || _loadingMore ? 1 : 0),
                               separatorBuilder: (_, _) => const SizedBox(height: 8),
-                              itemBuilder: (context, i) => _statusCard(_items[i]),
+                              itemBuilder: (context, i) {
+                                if (i >= _items.length) {
+                                  return Padding(
+                                    padding: const EdgeInsets.symmetric(vertical: 8),
+                                    child: _loadingMore
+                                        ? const Center(child: CircularProgressIndicator())
+                                        : OutlinedButton(
+                                            onPressed: () => _load(reset: false),
+                                            child: const Text('Load more'),
+                                          ),
+                                  );
+                                }
+                                return _statusCard(_items[i]);
+                              },
                             ),
             ),
           ),
@@ -683,6 +721,31 @@ class _DmrStatusScreenState extends State<DmrStatusScreen> {
       ),
     );
   }
+}
+
+List<Widget> _dmrDetailActions(
+  BuildContext context, {
+  required String id,
+  required String kind,
+  required Future<void> Function() reload,
+}) {
+  return [
+    IconButton(
+      tooltip: 'Edit',
+      onPressed: () async {
+        final path = switch (kind) {
+          'order' => '/dmr/status/$id/edit',
+          'entry' => '/dmr/entries/$id/edit',
+          'imprest' => '/dmr/imprest/$id/edit',
+          _ => '',
+        };
+        if (path.isEmpty) return;
+        final updated = await context.push<bool>(path);
+        if (updated == true && context.mounted) reload();
+      },
+      icon: const Icon(Icons.edit_outlined),
+    ),
+  ];
 }
 
 class DmrOrderDetailScreen extends StatefulWidget {
@@ -696,6 +759,8 @@ class DmrOrderDetailScreen extends StatefulWidget {
 class _DmrOrderDetailScreenState extends State<DmrOrderDetailScreen> {
   Map<String, dynamic>? _doc;
   List<Map<String, dynamic>> _entries = [];
+  List<Map<String, dynamic>> _debits = [];
+  List<Map<String, dynamic>> _credits = [];
   bool _loading = true;
   String? _error;
 
@@ -716,10 +781,26 @@ class _DmrOrderDetailScreenState extends State<DmrOrderDetailScreen> {
       final entries = ro == null || ro.isEmpty
           ? <Map<String, dynamic>>[]
           : await services.dmr.entriesByRo({'ro_number': ro});
+      var debits = <Map<String, dynamic>>[];
+      var credits = <Map<String, dynamic>>[];
+      if (ro != null && ro.isNotEmpty) {
+        try {
+          debits = await services.dmr.debitNotes({'ro_number': ro});
+        } on ApiException {
+          debits = const [];
+        }
+        try {
+          credits = await services.dmr.creditNotes({'ro_number': ro});
+        } on ApiException {
+          credits = const [];
+        }
+      }
       if (!mounted) return;
       setState(() {
         _doc = doc;
         _entries = entries;
+        _debits = debits;
+        _credits = credits;
         _loading = false;
       });
     } on ApiException catch (e) {
@@ -746,11 +827,112 @@ class _DmrOrderDetailScreenState extends State<DmrOrderDetailScreen> {
     }
   }
 
+  String? get _roNumber {
+    final value = _doc?['ro_number']?.toString().trim() ?? '';
+    return value.isEmpty ? null : value;
+  }
+
+  String? get _siteId => mongoId(_doc?['site']);
+
+  String? get _vendorId => mongoId(_doc?['vendor_id'] ?? _doc?['vendor'] ?? _doc?['vendor_detail']);
+
+  bool get _variancePending {
+    return _doc?['status']?.toString() == 'hold' && _doc?['variance_approval']?.toString() == 'pending';
+  }
+
+  Future<void> _downloadDocs() {
+    final ro = _roNumber ?? widget.id;
+    return shareDmrDownload(
+      context,
+      load: () => context.read<AppServices>().dmr.downloadOrderDocs(widget.id),
+      filename: 'dmr_$ro.zip',
+      label: 'DMR documents',
+    );
+  }
+
+  Future<void> _variance(String decision) async {
+    try {
+      await context.read<AppServices>().dmr.varianceApproval(widget.id, {
+        'variance_approval': decision,
+      });
+      if (!mounted) return;
+      showPmsSnack(context, decision == 'approved' ? 'Variance approved' : 'Variance rejected');
+      _load();
+    } on ApiException catch (e) {
+      if (mounted) showPmsSnack(context, e.message, error: true);
+    }
+  }
+
+  Future<void> _raiseDebit() async {
+    final ro = _roNumber;
+    final site = _siteId;
+    final vendor = _vendorId;
+    if (ro == null || site == null || vendor == null) {
+      showPmsSnack(context, 'This order is missing a site, vendor, or RO number', error: true);
+      return;
+    }
+    final created = await context.push<bool>(
+      '/dmr/debit/new?order=${widget.id}&ro=${Uri.encodeQueryComponent(ro)}&site=$site&vendor=$vendor',
+    );
+    if (created == true && mounted) _load();
+  }
+
+  Future<void> _addCredit() async {
+    final ro = _roNumber;
+    final site = _siteId;
+    final vendor = _vendorId;
+    if (ro == null || site == null || vendor == null) {
+      showPmsSnack(context, 'This order is missing a site, vendor, or RO number', error: true);
+      return;
+    }
+    final created = await showCreditNoteSheet(
+      context,
+      roNumber: ro,
+      vendorId: vendor,
+      siteId: site,
+    );
+    if (created && mounted) {
+      showPmsSnack(context, 'Credit note saved');
+      _load();
+    }
+  }
+
+  Future<void> _downloadCreditDocs() {
+    final ro = _roNumber;
+    if (ro == null) {
+      showPmsSnack(context, 'RO number is missing', error: true);
+      return Future.value();
+    }
+    return shareDmrDownload(
+      context,
+      load: () => context.read<AppServices>().dmr.downloadCreditDocs({'ro_number': ro}),
+      filename: 'credit_notes_$ro.zip',
+      label: 'Credit note documents',
+    );
+  }
+
+  Future<void> _downloadDebit(String id, String number) {
+    return shareDmrDownload(
+      context,
+      load: () => context.read<AppServices>().dmr.downloadDebitPdf(id),
+      filename: '${number.isEmpty ? 'debit_note' : number}.pdf',
+      label: 'Debit note',
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final doc = _doc;
     return Scaffold(
-      appBar: AppBar(title: Text(doc?['ro_number']?.toString() ?? 'DMR order')),
+      appBar: AppBar(
+        title: Text(doc?['ro_number']?.toString() ?? 'DMR order'),
+        actions: _dmrDetailActions(
+          context,
+          id: widget.id,
+          kind: 'order',
+          reload: _load,
+        ),
+      ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
@@ -763,8 +945,11 @@ class _DmrOrderDetailScreenState extends State<DmrOrderDetailScreen> {
                   children: [
                     StatusChip(status: doc?['status']?.toString()),
                     const SizedBox(height: 8),
-                    Text('Vendor: ${labelOf(doc?['vendor'])}'),
+                    Text('Vendor: ${doc == null ? '—' : (vendorNamesOf(doc).isEmpty ? '—' : vendorNamesOf(doc))}'),
                     Text('Site: ${labelOf(doc?['site'])}'),
+                    Text('Date: ${formatDate(doc?['poStartDate'] ?? doc?['createdAt'])}'),
+                    if ((doc?['remarks'] ?? '').toString().trim().isNotEmpty)
+                      Text('Remarks: ${doc?['remarks']}'),
                     const Divider(height: 32),
                     NamedItemLines(items: lineItemsOf(doc)),
                     const Divider(height: 32),
@@ -774,9 +959,89 @@ class _DmrOrderDetailScreenState extends State<DmrOrderDetailScreen> {
                         contentPadding: EdgeInsets.zero,
                         title: Text(e['dmr_no']?.toString() ?? e['challan_number']?.toString() ?? 'Entry'),
                         subtitle: Text(e['entry_type']?.toString() ?? ''),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () async {
+                          final entryId = idOf(e);
+                          if (!looksLikeObjectId(entryId)) return;
+                          final changed = await context.push<bool>('/dmr/entries/$entryId');
+                          if (changed == true && mounted) _load();
+                        },
                       ),
                     const SizedBox(height: 16),
                     FilledButton(onPressed: _close, child: const Text('Close order')),
+                    const SizedBox(height: 8),
+                    OutlinedButton.icon(
+                      onPressed: _downloadDocs,
+                      icon: const Icon(Icons.download_outlined),
+                      label: const Text('Download documents'),
+                    ),
+                    if (_variancePending) ...[
+                      const SizedBox(height: 16),
+                      const Text('Variance approval is pending', style: TextStyle(fontWeight: FontWeight.w700)),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: FilledButton(
+                              onPressed: () => _variance('approved'),
+                              child: const Text('Approve'),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed: () => _variance('rejected'),
+                              child: const Text('Reject'),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ] else if ((_doc?['variance_approval'] ?? '').toString().trim().isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Text('Variance: ${_doc?['variance_approval']}'),
+                    ],
+                    const Divider(height: 32),
+                    const Text('Debit notes', style: TextStyle(fontWeight: FontWeight.w700)),
+                    if (_debits.isEmpty)
+                      const Text('No debit notes')
+                    else
+                      for (final note in _debits)
+                        ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: Text(note['debitNoteNumber']?.toString() ?? 'Debit note'),
+                          subtitle: Text('${note['status'] ?? 'raised'} · ${note['grandTotal'] ?? note['totalAmount'] ?? ''}'),
+                          trailing: IconButton(
+                            tooltip: 'Download PDF',
+                            onPressed: () {
+                              final id = idOf(note);
+                              if (!looksLikeObjectId(id)) return;
+                              _downloadDebit(id!, note['debitNoteNumber']?.toString() ?? 'debit_note');
+                            },
+                            icon: const Icon(Icons.picture_as_pdf_outlined),
+                          ),
+                        ),
+                    OutlinedButton(onPressed: _raiseDebit, child: const Text('Raise debit note')),
+                    const Divider(height: 32),
+                    const Text('Credit notes', style: TextStyle(fontWeight: FontWeight.w700)),
+                    if (_credits.isEmpty)
+                      const Text('No credit notes')
+                    else
+                      for (final note in _credits)
+                        ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: Text(note['creditNoteNumber']?.toString() ?? 'Credit note'),
+                          subtitle: Text(
+                            '${formatDate(note['creditNoteDate'])} · ${note['creditNoteAmount'] ?? ''}',
+                          ),
+                        ),
+                    const SizedBox(height: 8),
+                    OutlinedButton(onPressed: _addCredit, child: const Text('Add credit note')),
+                    const SizedBox(height: 8),
+                    OutlinedButton.icon(
+                      onPressed: _downloadCreditDocs,
+                      icon: const Icon(Icons.download_outlined),
+                      label: const Text('Download credit documents'),
+                    ),
                   ],
                 ),
     );
@@ -804,7 +1069,10 @@ class _DmrEntryDetailScreenState extends State<DmrEntryDetailScreen> {
 
   Future<void> _load() async {
     try {
-      final doc = await context.read<AppServices>().dmr.getEntry(widget.id);
+      final services = context.read<AppServices>();
+      final doc = await services.dmr.getEntry(widget.id);
+      if (!mounted) return;
+      await resolveDocItemNames(doc, services.settings.items.getById);
       if (!mounted) return;
       setState(() {
         _doc = doc;
@@ -824,7 +1092,15 @@ class _DmrEntryDetailScreenState extends State<DmrEntryDetailScreen> {
     final doc = _doc;
     final title = doc?['dmr_no']?.toString() ?? doc?['challan_number']?.toString() ?? 'DMR entry';
     return Scaffold(
-      appBar: AppBar(title: Text(title)),
+      appBar: AppBar(
+        title: Text(title),
+        actions: _dmrDetailActions(
+          context,
+          id: widget.id,
+          kind: 'entry',
+          reload: _load,
+        ),
+      ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
@@ -839,13 +1115,49 @@ class _DmrEntryDetailScreenState extends State<DmrEntryDetailScreen> {
                     const SizedBox(height: 8),
                     Text('PO: ${doc?['ro_number'] ?? '—'}'),
                     Text('Site: ${labelOf(doc?['site'])}'),
-                    Text('Vendor: ${labelOf(doc?['vendor_id'] ?? doc?['vendor_detail'])}'),
+                    Text('Vendor: ${doc == null ? '—' : (vendorNamesOf(doc).isEmpty ? labelOf(doc['vendor_id'] ?? doc['vendor_detail']) : vendorNamesOf(doc))}'),
+                    Text('Date: ${formatDate(doc?['invoice_date'] ?? doc?['challan_date'] ?? doc?['gate_entry_date'])}'),
                     if ((doc?['challan_number'] ?? '').toString().isNotEmpty)
                       Text('Challan: ${doc?['challan_number']}'),
                     if ((doc?['invoice_number'] ?? '').toString().isNotEmpty)
                       Text('Invoice: ${doc?['invoice_number']}'),
+                    if ((doc?['gate_register_entry'] ?? '').toString().isNotEmpty)
+                      Text('Gate: ${doc?['gate_register_entry']}'),
+                    if ((doc?['vehicle_number'] ?? '').toString().isNotEmpty)
+                      Text('Vehicle: ${doc?['vehicle_number']}'),
+                    if ((doc?['remarks'] ?? '').toString().trim().isNotEmpty)
+                      Text('Remarks: ${doc?['remarks']}'),
+                    if ((doc?['date_of_doc_submission_to_ho'] ?? '').toString().isNotEmpty)
+                      Text('Submitted to HO: ${formatDate(doc?['date_of_doc_submission_to_ho'])}'),
+                    if ((doc?['remarks_for_audit'] ?? '').toString().trim().isNotEmpty)
+                      Text('Audit remarks: ${doc?['remarks_for_audit']}'),
                     const Divider(height: 32),
                     NamedItemLines(items: lineItemsOf(doc)),
+                    const SizedBox(height: 16),
+                    OutlinedButton.icon(
+                      onPressed: () => shareDmrDownload(
+                        context,
+                        load: () => context.read<AppServices>().dmr.downloadEntryPdf(widget.id),
+                        filename: '${title.replaceAll(' ', '_')}.pdf',
+                        label: 'DMR entry',
+                      ),
+                      icon: const Icon(Icons.picture_as_pdf_outlined),
+                      label: const Text('Download PDF'),
+                    ),
+                    const SizedBox(height: 8),
+                    FilledButton(
+                      onPressed: () async {
+                        await showDocSubmissionSheet(
+                          context,
+                          recordId: widget.id,
+                          imprest: false,
+                          existingDate: doc?['date_of_doc_submission_to_ho']?.toString(),
+                          existingRemarks: doc?['remarks_for_audit']?.toString(),
+                        );
+                        if (mounted) _load();
+                      },
+                      child: const Text('Document submission'),
+                    ),
                   ],
                 ),
     );
@@ -873,7 +1185,10 @@ class _DmrImprestDetailScreenState extends State<DmrImprestDetailScreen> {
 
   Future<void> _load() async {
     try {
-      final doc = await context.read<AppServices>().dmr.getImprest(widget.id);
+      final services = context.read<AppServices>();
+      final doc = await services.dmr.getImprest(widget.id);
+      if (!mounted) return;
+      await resolveDocItemNames(doc, services.settings.items.getById);
       if (!mounted) return;
       setState(() {
         _doc = doc;
@@ -892,7 +1207,15 @@ class _DmrImprestDetailScreenState extends State<DmrImprestDetailScreen> {
   Widget build(BuildContext context) {
     final doc = _doc;
     return Scaffold(
-      appBar: AppBar(title: Text(doc?['dmr_no']?.toString() ?? 'Cash purchase')),
+      appBar: AppBar(
+        title: Text(doc?['dmr_no']?.toString() ?? 'Cash purchase'),
+        actions: _dmrDetailActions(
+          context,
+          id: widget.id,
+          kind: 'imprest',
+          reload: _load,
+        ),
+      ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
@@ -906,10 +1229,47 @@ class _DmrImprestDetailScreenState extends State<DmrImprestDetailScreen> {
                     StatusChip(status: doc?['status']?.toString()),
                     const SizedBox(height: 8),
                     Text('Site: ${labelOf(doc?['site'])}'),
+                    Text('Date: ${formatDate(doc?['date'] ?? doc?['invoice_date'])}'),
+                    Text('Vendor: ${doc == null ? '—' : (vendorNamesOf(doc).isEmpty ? '—' : vendorNamesOf(doc))}'),
                     Text('Invoice: ${doc?['invoice_number'] ?? '—'}'),
+                    if ((doc?['gate_register_entry'] ?? '').toString().isNotEmpty)
+                      Text('Gate: ${doc?['gate_register_entry']}'),
+                    if ((doc?['vehicle_number'] ?? '').toString().isNotEmpty)
+                      Text('Vehicle: ${doc?['vehicle_number']}'),
+                    if ((doc?['remarks'] ?? '').toString().trim().isNotEmpty)
+                      Text('Remarks: ${doc?['remarks']}'),
+                    if ((doc?['date_of_doc_submission_to_ho'] ?? '').toString().isNotEmpty)
+                      Text('Submitted to HO: ${formatDate(doc?['date_of_doc_submission_to_ho'])}'),
+                    if ((doc?['remarks_for_audit'] ?? '').toString().trim().isNotEmpty)
+                      Text('Audit remarks: ${doc?['remarks_for_audit']}'),
                     Text('Total: ${doc?['total_amount'] ?? '—'}'),
                     const Divider(height: 32),
                     NamedItemLines(items: lineItemsOf(doc)),
+                    const SizedBox(height: 16),
+                    OutlinedButton.icon(
+                      onPressed: () => shareDmrDownload(
+                        context,
+                        load: () => context.read<AppServices>().dmr.downloadImprestPdf(widget.id),
+                        filename: '${(doc?['dmr_no'] ?? 'cash_purchase').toString().replaceAll(' ', '_')}.pdf',
+                        label: 'Cash purchase',
+                      ),
+                      icon: const Icon(Icons.picture_as_pdf_outlined),
+                      label: const Text('Download PDF'),
+                    ),
+                    const SizedBox(height: 8),
+                    FilledButton(
+                      onPressed: () async {
+                        await showDocSubmissionSheet(
+                          context,
+                          recordId: widget.id,
+                          imprest: true,
+                          existingDate: doc?['date_of_doc_submission_to_ho']?.toString(),
+                          existingRemarks: doc?['remarks_for_audit']?.toString(),
+                        );
+                        if (mounted) _load();
+                      },
+                      child: const Text('Document submission'),
+                    ),
                   ],
                 ),
     );
@@ -917,7 +1277,12 @@ class _DmrImprestDetailScreenState extends State<DmrImprestDetailScreen> {
 }
 
 class DmrCreateScreen extends StatefulWidget {
-  const DmrCreateScreen({super.key});
+  const DmrCreateScreen({super.key, this.recordId, this.recordKind});
+
+  final String? recordId;
+  final String? recordKind;
+
+  bool get isEdit => recordId != null && recordId!.isNotEmpty;
 
   @override
   State<DmrCreateScreen> createState() => _DmrCreateScreenState();
@@ -963,8 +1328,10 @@ class _DmrCreateScreenState extends State<DmrCreateScreen> {
   List<String> _gstRates = ['0'];
   final List<_CashLine> _cashLines = [_CashLine()];
   PendingFile? _document;
+  String _existingDoc = '';
   bool _saving = false;
   bool _loadingPo = false;
+  bool _loadingRecord = false;
   final _fieldErrors = FieldErrors();
 
   @override
@@ -1005,6 +1372,169 @@ class _DmrCreateScreenState extends State<DmrCreateScreen> {
         }
         _gstRates = rates.toList()..sort((a, b) => (num.tryParse(a) ?? 0).compareTo(num.tryParse(b) ?? 0));
       });
+      if (widget.isEdit) await _loadRecord();
+    });
+  }
+
+  String get _saveLabel => _saving ? 'Saving…' : (widget.isEdit ? 'Save' : 'Create DMR');
+
+  DateTime? _parseDate(dynamic value) {
+    final text = value?.toString().trim() ?? '';
+    if (text.isEmpty) return null;
+    return DateTime.tryParse(text);
+  }
+
+  TimeOfDay? _parseTime(String raw) {
+    final match = RegExp(r'^(\d{1,2}):(\d{2})\s*(AM|PM)?$', caseSensitive: false).firstMatch(raw.trim());
+    if (match == null) return null;
+    var hour = int.parse(match.group(1)!);
+    final minute = int.parse(match.group(2)!);
+    final suffix = match.group(3)?.toUpperCase();
+    if (suffix == 'PM' && hour < 12) hour += 12;
+    if (suffix == 'AM' && hour == 12) hour = 0;
+    if (hour > 23 || minute > 59) return null;
+    return TimeOfDay(hour: hour, minute: minute);
+  }
+
+  String _numText(num value) {
+    if (value == value.roundToDouble()) return value.toInt().toString();
+    return value.toString();
+  }
+
+  Future<void> _loadRecord() async {
+    setState(() => _loadingRecord = true);
+    try {
+      final dmr = context.read<AppServices>().dmr;
+      if (widget.recordKind == 'imprest') {
+        _applyImprest(await dmr.getImprest(widget.recordId!));
+      } else {
+        await _applyEntry(await dmr.getEntry(widget.recordId!));
+      }
+      if (!mounted) return;
+      setState(() => _loadingRecord = false);
+      if (!_cashPurchase && _siteId != null && _vendorId != null) _loadOpen();
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() => _loadingRecord = false);
+      showPmsSnack(context, e.message, error: true);
+    }
+  }
+
+  void _applyImprest(Map<String, dynamic> doc) {
+    final previous = List<_CashLine>.from(_cashLines);
+    final next = <_CashLine>[];
+    for (final raw in lineItemsOf(doc)) {
+      final line = _CashLine();
+      line.categoryId = idOf(raw['category_id']);
+      final category = labelOf(raw['category_id'], fallback: '');
+      line.categoryLabel = category == '—' ? '' : category;
+      line.subId = idOf(raw['sub_category_id']);
+      final sub = labelOf(raw['sub_category_id'], fallback: '');
+      line.subLabel = sub == '—' ? '' : sub;
+      line.uom = raw['uom'] is Map ? labelOf(raw['uom'], fallback: '') : _firstText([raw['uom']]);
+      final qty = asNum(raw['qty']) ?? 0;
+      final amount = asNum(raw['amount']) ?? 0;
+      line.qty.text = _numText(qty);
+      line.amount.text = _numText(amount);
+      line.remark.text = raw['remark']?.toString() ?? '';
+      next.add(line);
+    }
+    final other = doc['other_charges'] is Map ? Map<String, dynamic>.from(doc['other_charges'] as Map) : const {};
+    final charges = asNum(other['charges']) ?? 0;
+    final gstAmount = asNum(other['charges_gst']) ?? 0;
+    final vendor = vendorNamesOf(doc);
+    setState(() {
+      _cashPurchase = true;
+      _siteId = idOf(doc['site']);
+      _siteLabel = labelOf(doc['site'], fallback: '');
+      if (_siteLabel == '—') _siteLabel = '';
+      _vendorId = idOf(doc['vendor_id']);
+      _vendorLabel = vendor.isNotEmpty ? vendor : labelOf(doc['vendor_id'], fallback: '');
+      if (_vendorLabel == '—') _vendorLabel = doc['vendor_name']?.toString() ?? '';
+      _dmrNo.text = doc['dmr_no']?.toString() ?? '';
+      _entryDate = _parseDate(doc['date'] ?? doc['invoice_date']) ?? _entryDate;
+      _gate.text = doc['gate_register_entry']?.toString() ?? '';
+      _gateDate = _parseDate(doc['gate_entry_date']);
+      _entryTime = _parseTime(doc['gate_entry_time']?.toString() ?? '');
+      final mode = doc['mode']?.toString().trim() ?? '';
+      if (const {'Vehicle', 'Courier', 'Rail', 'Air', 'By Hand'}.contains(mode)) _modeValue = mode;
+      _vehicle.text = doc['vehicle_number']?.toString() ?? '';
+      _invoice.text = doc['invoice_number']?.toString() ?? '';
+      _invoiceDate = _parseDate(doc['invoice_date']);
+      _otherCharges.text = _numText(charges);
+      if (charges > 0) {
+        final rate = gstAmount * 100 / charges;
+        _otherGst = _numText(rate);
+        if (!_gstRates.contains(_otherGst)) _gstRates = [..._gstRates, _otherGst];
+      }
+      _existingDoc = doc['invoice_or_challan_doc']?.toString() ?? '';
+      _cashLines
+        ..clear()
+        ..addAll(next.isEmpty ? [_CashLine()] : next);
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      for (final line in previous) {
+        line.dispose();
+      }
+    });
+  }
+
+  Future<void> _applyEntry(Map<String, dynamic> doc) async {
+    final previous = List<_DmrLine>.from(_lines);
+    final lines = [for (final raw in lineItemsOf(doc)) _DmrLine.fromSaved(raw)];
+    final hasInvoice = (doc['invoice_number']?.toString().trim() ?? '').isNotEmpty;
+    final vendor = vendorNamesOf(doc);
+    var poDate = '';
+    var validTill = '';
+    var org = '';
+    final poId = mongoId(doc['requisition_order_id']);
+    if (poId != null) {
+      try {
+        final po = await context.read<AppServices>().po.getById(poId);
+        poDate = _dateLabel(_fromPoOrRevision(po, doc, ['poStartDate', 'po_date']));
+        validTill = _dateLabel(_fromPoOrRevision(po, doc, ['due_date', 'due_Date']));
+        org = _orgFrom(po);
+      } on ApiException {
+        // The entry still opens with the fields stored on the DMR.
+      }
+    }
+    if (!mounted) return;
+    setState(() {
+      _cashPurchase = false;
+      _siteId = idOf(doc['site']);
+      _siteLabel = labelOf(doc['site'], fallback: '');
+      if (_siteLabel == '—') _siteLabel = '';
+      _vendorId = idOf(doc['vendor_id']);
+      _vendorLabel = vendor.isNotEmpty ? vendor : labelOf(doc['vendor_id'], fallback: '');
+      if (_vendorLabel == '—') _vendorLabel = '';
+      _roId = idOf(doc['ro_id']);
+      _roNumber = doc['ro_number']?.toString() ?? '';
+      _roLabel = _roNumber;
+      _poDate = poDate;
+      _poValidTill = validTill;
+      _orgName = org;
+      final pr = '${doc['pr_type'] ?? doc['prType'] ?? ''}';
+      if (const {'Project BOQ', 'Site Establishment', 'Assets'}.contains(pr)) _prType = pr;
+      _orderType = '${doc['order_type']}' == 'Work Order' ? 'Work Order' : 'Purchase Order';
+      _dmrNo.text = doc['dmr_no']?.toString() ?? '';
+      _gate.text = doc['gate_register_entry']?.toString() ?? '';
+      _gateDate = _parseDate(doc['gate_entry_date']);
+      _gateTime.text = doc['gate_entry_time']?.toString() ?? '';
+      _mode.text = doc['mode']?.toString() ?? '';
+      _vehicle.text = doc['vehicle_number']?.toString() ?? '';
+      _docket.text = doc['docker_number']?.toString() ?? '';
+      _entryType = hasInvoice ? 'invoice' : 'challan';
+      _invoice.text = doc['invoice_number']?.toString() ?? '';
+      _invoiceDate = _parseDate(doc['invoice_date']);
+      _challan.text = doc['challan_number']?.toString() ?? '';
+      _challanDate = _parseDate(doc['challan_date']);
+      _existingDoc = doc['invoice_or_challan_doc']?.toString() ?? '';
+      _lines = lines;
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      for (final line in previous) {
+        line.dispose();
+      }
     });
   }
 
@@ -1260,6 +1790,7 @@ class _DmrCreateScreenState extends State<DmrCreateScreen> {
     _fieldErrors.set('dmrNo', _dmrNo.text.trim().isEmpty ? 'DMR number is required' : null);
     if (_cashPurchase) {
       _fieldErrors.set('entryDate', requiredDate(_entryDate, 'Date'));
+      _fieldErrors.set('vendor', requiredSelection(_vendorId, 'Vendor'));
       _fieldErrors.set(
         'gate',
         _numberError(_gate.text, 'Gate register entry no.', positive: true, integer: true),
@@ -1269,7 +1800,10 @@ class _DmrCreateScreenState extends State<DmrCreateScreen> {
       _fieldErrors.set('vehicle', _vehicle.text.trim().isEmpty ? 'Vehicle number is required' : null);
       _fieldErrors.set('invoice', _invoice.text.trim().isEmpty ? 'Bill / invoice no. is required' : null);
       _fieldErrors.set('invoiceDate', requiredDate(_invoiceDate, 'Bill / invoice date'));
-      _fieldErrors.set('document', _document == null ? 'Upload the bill or challan' : null);
+      _fieldErrors.set(
+        'document',
+        _document == null && _existingDoc.isEmpty ? 'Upload the bill or challan' : null,
+      );
       _fieldErrors.set('otherCharges', _numberError(_otherCharges.text, 'Other charges', required: false));
       if (_cashLines.isEmpty) {
         _fieldErrors.set('lines', 'Add at least one item');
@@ -1284,7 +1818,7 @@ class _DmrCreateScreenState extends State<DmrCreateScreen> {
       }
     } else {
       _fieldErrors.set('vendor', requiredSelection(_vendorId, 'Vendor'));
-      _fieldErrors.set('po', requiredSelection(_roId, 'PO number'));
+      if (!widget.isEdit) _fieldErrors.set('po', requiredSelection(_roId, 'PO number'));
       if (_roId != null && _lines.isEmpty) {
         _fieldErrors.set('items', 'This PO has no line items');
       }
@@ -1296,7 +1830,10 @@ class _DmrCreateScreenState extends State<DmrCreateScreen> {
       }
       if (_entryType == 'invoice') {
         _fieldErrors.set('invoice', _invoice.text.trim().isEmpty ? 'Bill / invoice no. is required' : null);
-        _fieldErrors.set('document', _document == null ? 'Upload the invoice' : null);
+        _fieldErrors.set(
+          'document',
+          _document == null && _existingDoc.isEmpty ? 'Upload the invoice' : null,
+        );
       } else {
         _fieldErrors.set('challan', _challan.text.trim().isEmpty ? 'Challan number is required' : null);
       }
@@ -1323,6 +1860,7 @@ class _DmrCreateScreenState extends State<DmrCreateScreen> {
       'vehicle_number': 'vehicle',
       'invoice_number': 'invoice',
       'invoice_date': 'invoiceDate',
+      'date': 'entryDate',
       'challan_number': 'challan',
       'challan_date': 'challanDate',
       'invoice_or_challan_doc': 'document',
@@ -1359,14 +1897,14 @@ class _DmrCreateScreenState extends State<DmrCreateScreen> {
     await showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('DMR created'),
+        title: Text(widget.isEdit ? 'DMR updated' : 'DMR created'),
         content: Text(message),
         actions: [
           FilledButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK')),
         ],
       ),
     );
-    if (mounted) context.pop();
+    if (mounted) context.pop(widget.isEdit ? true : null);
   }
 
   Future<void> _save() async {
@@ -1392,31 +1930,38 @@ class _DmrCreateScreenState extends State<DmrCreateScreen> {
       final gstAmount = charges * gstRate / 100;
       final otherTotal = charges + gstAmount;
       final itemsTotal = items.fold<num>(0, (sum, row) => sum + (row['amount'] as num));
+      final cashPayload = {
+        'site': _siteId,
+        'dmr_no': _dmrNo.text.trim(),
+        'invoice_number': _invoice.text.trim(),
+        'invoice_date': isoDateOnly(_invoiceDate),
+        'date': isoDateOnly(_entryDate),
+        'vendor_id': _vendorId,
+        'vendor_name': _vendorLabel,
+        'gate_register_entry': _gate.text.trim(),
+        'gate_entry_date': isoDateOnly(_gateDate),
+        'gate_entry_time': _formatTime(_entryTime!),
+        'mode': _modeValue,
+        'vehicle_number': _vehicle.text.trim(),
+        'dmr_items': items,
+        'other_charges': {
+          'charges': charges,
+          'charges_gst': gstAmount,
+          'total_other_charges': otherTotal,
+        },
+        'total_amount': itemsTotal + otherTotal,
+        if (_document == null && _existingDoc.isNotEmpty) 'invoice_or_challan_doc': _existingDoc,
+      };
       setState(() => _saving = true);
       try {
-        await context.read<AppServices>().dmr.createImprest(
-          {
-            'site': _siteId,
-            'dmr_no': _dmrNo.text.trim(),
-            'invoice_number': _invoice.text.trim(),
-            'invoice_date': isoDateOnly(_invoiceDate),
-            'gate_register_entry': _gate.text.trim(),
-            'gate_entry_date': isoDateOnly(_gateDate),
-            'gate_entry_time': _formatTime(_entryTime!),
-            'mode': _modeValue,
-            'vehicle_number': _vehicle.text.trim(),
-            'dmr_items': items,
-            'other_charges': {
-              'charges': charges,
-              'charges_gst': gstAmount,
-              'total_other_charges': otherTotal,
-            },
-            'total_amount': itemsTotal + otherTotal,
-          },
-          document: _document!.toEntry(),
-        );
+        final dmr = context.read<AppServices>().dmr;
+        if (widget.isEdit) {
+          await dmr.updateImprest(widget.recordId!, cashPayload, document: _document?.toEntry());
+        } else {
+          await dmr.createImprest(cashPayload, document: _document!.toEntry());
+        }
         if (!mounted) return;
-        await _confirmSaved('Cash purchase DMR created');
+        await _confirmSaved(widget.isEdit ? 'Cash purchase updated' : 'Cash purchase DMR created');
       } on ApiException catch (e) {
         if (!mounted) return;
         setState(() => _applyApiErrors(e));
@@ -1445,29 +1990,30 @@ class _DmrCreateScreenState extends State<DmrCreateScreen> {
       'dmr_items': _itemPayload(),
     };
 
+    final entryPayload = {
+      ...payload,
+      if (isInvoice) 'invoice_number': _invoice.text.trim(),
+      if (isInvoice && _invoiceDate != null) 'invoice_date': isoDateOnly(_invoiceDate),
+      if (!isInvoice) 'challan_number': _challan.text.trim(),
+      if (!isInvoice && _challanDate != null) 'challan_date': isoDateOnly(_challanDate),
+      if (_document == null && _existingDoc.isNotEmpty) 'invoice_or_challan_doc': _existingDoc,
+    };
     setState(() => _saving = true);
     try {
-      if (isInvoice) {
-        await context.read<AppServices>().dmr.createInvoice(
-          {
-            ...payload,
-            'invoice_number': _invoice.text.trim(),
-            if (_invoiceDate != null) 'invoice_date': isoDateOnly(_invoiceDate),
-          },
-          document: _document!.toEntry(),
-        );
+      final dmr = context.read<AppServices>().dmr;
+      if (widget.isEdit) {
+        await dmr.updateEntry(widget.recordId!, entryPayload, document: _document?.toEntry());
+      } else if (isInvoice) {
+        await dmr.createInvoice(entryPayload, document: _document!.toEntry());
       } else {
-        await context.read<AppServices>().dmr.createChallan(
-          {
-            ...payload,
-            'challan_number': _challan.text.trim(),
-            if (_challanDate != null) 'challan_date': isoDateOnly(_challanDate),
-          },
-          document: _document?.toEntry(),
-        );
+        await dmr.createChallan(entryPayload, document: _document?.toEntry());
       }
       if (!mounted) return;
-      await _confirmSaved(isInvoice ? 'Invoice DMR created' : 'Challan created');
+      await _confirmSaved(
+        widget.isEdit
+            ? 'DMR updated'
+            : (isInvoice ? 'Invoice DMR created' : 'Challan created'),
+      );
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() => _applyApiErrors(e));
@@ -1490,6 +2036,32 @@ class _DmrCreateScreenState extends State<DmrCreateScreen> {
       child: Column(
         children: [
           _LockedField(label: 'Site', value: _siteLabel),
+          const SizedBox(height: 12),
+          PickerField(
+            label: 'Vendor',
+            required: true,
+            hint: 'Select vendor',
+            valueLabel: _vendorLabel,
+            errorText: _fieldErrors['vendor'],
+            onTap: () async {
+              final picked = await showOptionPicker(
+                context,
+                title: 'Vendor',
+                options: mapToOptions(
+                  _vendors,
+                  labelOfRow: (r) => r['vendor_name']?.toString() ?? labelOf(r),
+                ),
+                selected: _vendorId,
+                emptyMessage: 'No vendors found',
+              );
+              if (picked == null) return;
+              setState(() {
+                _vendorId = picked.value;
+                _vendorLabel = picked.label;
+              });
+            },
+          ),
+          const SizedBox(height: 12),
           TextField(
             controller: _dmrNo,
             readOnly: true,
@@ -1543,6 +2115,7 @@ class _DmrCreateScreenState extends State<DmrCreateScreen> {
           ),
           const SizedBox(height: 12),
           AppDropdownFormField<String>(
+            key: ValueKey('mode-$_modeValue'),
             initialValue: _modeValue,
             decoration: const InputDecoration(labelText: 'Mode *'),
             items: const [
@@ -1587,7 +2160,9 @@ class _DmrCreateScreenState extends State<DmrCreateScreen> {
               setState(() => _document = files.first);
             },
             icon: const Icon(Icons.upload_file),
-            label: Text(_document?.filename ?? 'Upload invoice/challan'),
+            label: Text(
+              _document?.filename ?? (_existingDoc.isNotEmpty ? 'Document attached' : 'Upload invoice/challan'),
+            ),
           ),
           if (_fieldErrors['document'] != null)
             Padding(
@@ -1738,7 +2313,7 @@ class _DmrCreateScreenState extends State<DmrCreateScreen> {
           const SizedBox(height: 8),
           FilledButton(
             onPressed: _saving ? null : _save,
-            child: Text(_saving ? 'Saving…' : 'Create DMR'),
+            child: Text(_saveLabel),
           ),
         ],
       ),
@@ -1749,8 +2324,10 @@ class _DmrCreateScreenState extends State<DmrCreateScreen> {
   Widget build(BuildContext context) {
     final poReady = _siteId != null && _vendorId != null && !_cashPurchase;
     return Scaffold(
-      appBar: AppBar(title: const Text('Create DMR')),
-      body: ListView(
+      appBar: AppBar(title: Text(widget.isEdit ? 'Edit DMR' : 'Create DMR')),
+      body: _loadingRecord
+          ? const Center(child: CircularProgressIndicator())
+          : ListView(
         padding: AppTheme.formPadding,
         children: [
           if (_fieldErrors.hasErrors) ValidationSummaryBanner(messages: _fieldErrors.messages),
@@ -1777,7 +2354,7 @@ class _DmrCreateScreenState extends State<DmrCreateScreen> {
                       _clearPo();
                     });
                     if (_cashPurchase) {
-                      _loadCashNumber();
+                      if (!widget.isEdit) _loadCashNumber();
                     } else {
                       _loadOpen();
                     }
@@ -1825,14 +2402,16 @@ class _DmrCreateScreenState extends State<DmrCreateScreen> {
                   controlAffinity: ListTileControlAffinity.leading,
                   title: const Text('Cash Purchase'),
                   value: _cashPurchase,
-                  onChanged: (v) {
-                    setState(() {
-                      _cashPurchase = v ?? false;
-                      _clearPo();
-                      _open = [];
-                    });
-                    if (v == true) _loadCashNumber();
-                  },
+                  onChanged: widget.isEdit
+                      ? null
+                      : (v) {
+                          setState(() {
+                            _cashPurchase = v ?? false;
+                            _clearPo();
+                            _open = [];
+                          });
+                          if (v == true) _loadCashNumber();
+                        },
                 ),
               ],
             ),
@@ -1858,7 +2437,7 @@ class _DmrCreateScreenState extends State<DmrCreateScreen> {
             const SizedBox(height: 12),
             _cashPurchaseForm(),
           ],
-          if (_roId != null) ...[
+          if (_roId != null || (widget.isEdit && !_cashPurchase)) ...[
             const SizedBox(height: 12),
             SegmentedButton<String>(
               segments: const [
@@ -1956,7 +2535,9 @@ class _DmrCreateScreenState extends State<DmrCreateScreen> {
                       setState(() => _document = files.first);
                     },
                     icon: const Icon(Icons.upload_file),
-                    label: Text(_document?.filename ?? 'Upload invoice/challan'),
+                    label: Text(
+              _document?.filename ?? (_existingDoc.isNotEmpty ? 'Document attached' : 'Upload invoice/challan'),
+            ),
                   ),
                   if (_fieldErrors['document'] != null)
                     Padding(
@@ -2025,7 +2606,7 @@ class _DmrCreateScreenState extends State<DmrCreateScreen> {
             const SizedBox(height: 16),
             FilledButton(
               onPressed: _saving ? null : _save,
-              child: Text(_saving ? 'Saving…' : 'Create DMR'),
+              child: Text(_saveLabel),
             ),
           ],
         ],
@@ -2163,6 +2744,24 @@ class _DmrLine {
   })  : received = TextEditingController(text: '$openQty'),
         accepted = TextEditingController(text: '$openQty'),
         rejected = TextEditingController(text: '0');
+
+  factory _DmrLine.fromSaved(Map<String, dynamic> row) {
+    final line = _DmrLine.fromPo(row);
+    final received = asNum(row['received_qty']);
+    final accepted = asNum(row['accepted_qty']);
+    final rejected = asNum(row['rejected_qty']);
+    if (received != null) {
+      line.received.text = received == received.roundToDouble() ? received.toInt().toString() : received.toString();
+    }
+    if (accepted != null) {
+      line.accepted.text = accepted == accepted.roundToDouble() ? accepted.toInt().toString() : accepted.toString();
+    }
+    if (rejected != null) {
+      line.rejected.text = rejected == rejected.roundToDouble() ? rejected.toInt().toString() : rejected.toString();
+    }
+    line.remark.text = row['remark']?.toString() ?? '';
+    return line;
+  }
 
   factory _DmrLine.fromPo(Map<String, dynamic> row) {
     final item = row['item_id'] is Map ? Map<String, dynamic>.from(row['item_id'] as Map) : null;

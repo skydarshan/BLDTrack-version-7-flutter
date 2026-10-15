@@ -1,9 +1,7 @@
-/// RR list: digits → PR number; otherwise title `search` (backend ANDs both).
+/// One box matches PR number and title together (and site name on the server).
 Map<String, dynamic> rrSearchQuery(String raw) {
   final q = raw.trim();
   if (q.isEmpty) return const {};
-  final n = int.tryParse(q);
-  if (n != null) return {'requisition_request_number': n};
   return {'search': q};
 }
 

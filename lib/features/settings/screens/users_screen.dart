@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/api_helpers.dart';
+import '../../../core/widgets/sort_menu.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/form_validation_helpers.dart';
 import '../../../core/utils/form_validators.dart';
@@ -12,6 +13,19 @@ import '../../pms/widgets/pms_widgets.dart';
 import '../services/settings_apis.dart';
 import '../utils/permissions.dart';
 import 'settings_form_widgets.dart';
+
+String _statusLabel(String? status) {
+  switch (status) {
+    case 'inactive':
+      return 'Inactive';
+    case 'suspended':
+      return 'Suspended';
+    case 'active':
+      return 'Active';
+    default:
+      return '';
+  }
+}
 
 class UsersScreen extends StatefulWidget {
   const UsersScreen({super.key});
@@ -30,6 +44,8 @@ class _UsersScreenState extends State<UsersScreen> {
   String? _error;
   int _page = 1;
   String _search = '';
+  String _sortBy = 'name';
+  String _sortOrder = 'asc';
 
   Permissions get _perms => Permissions(context.read<AuthProvider>().user);
   String? get _selfId => context.read<AuthProvider>().user?.id;
@@ -65,8 +81,8 @@ class _UsersScreenState extends State<UsersScreen> {
         'page': _page,
         'limit': 20,
         'search': _search,
-        'sortBy': 'name',
-        'sortOrder': 'asc',
+        'sortBy': _sortBy,
+        'sortOrder': _sortOrder,
       });
       if (!mounted) return;
       setState(() {
@@ -136,6 +152,10 @@ class _UsersScreenState extends State<UsersScreen> {
         ? (row!['role']['name']?.toString() ?? '')
         : '';
     var siteIds = idsFromRefs(row?['sites']);
+    final rawStatus = row?['status']?.toString();
+    var status = rawStatus == 'inactive' || rawStatus == 'suspended'
+        ? rawStatus!
+        : 'active';
 
     List<OptionItem> roleOptions = const [];
     List<OptionItem> siteOptions = const [];
@@ -238,6 +258,30 @@ class _UsersScreenState extends State<UsersScreen> {
                       selectedIds: siteIds,
                       onChanged: (ids) => setLocal(() => siteIds = ids),
                     ),
+                    const SizedBox(height: 8),
+                    PickerField(
+                      label: 'Status',
+                      required: true,
+                      valueLabel: status == 'inactive'
+                          ? 'Inactive'
+                          : status == 'suspended'
+                              ? 'Suspended'
+                              : 'Active',
+                      onTap: () async {
+                        final picked = await showOptionPicker(
+                          context,
+                          title: 'User status',
+                          options: const [
+                            OptionItem(value: 'active', label: 'Active'),
+                            OptionItem(value: 'inactive', label: 'Inactive'),
+                            OptionItem(value: 'suspended', label: 'Suspended'),
+                          ],
+                          selected: status,
+                        );
+                        if (picked == null) return;
+                        setLocal(() => status = picked.value);
+                      },
+                    ),
                     FilledButton(
                       onPressed: () async {
                         fieldErrors.clear();
@@ -261,6 +305,7 @@ class _UsersScreenState extends State<UsersScreen> {
                           'email': emailCtrl.text.trim().toLowerCase(),
                           'role': roleId,
                           'sites': siteIds,
+                          'status': status,
                         };
                         final pwd = passwordCtrl.text;
                         if (!isEdit) {
@@ -342,7 +387,24 @@ class _UsersScreenState extends State<UsersScreen> {
     final totalPages = (_pagination?['totalPages'] as num?)?.toInt() ?? 1;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Users')),
+      appBar: AppBar(
+        title: const Text('Users'),
+        actions: [
+          SortMenuButton(
+            choices: nameSortChoices('name', 'Name'),
+            sortBy: _sortBy,
+            sortOrder: _sortOrder,
+            onSelected: (by, order) {
+              setState(() {
+                _sortBy = by;
+                _sortOrder = order;
+                _page = 1;
+              });
+              _load();
+            },
+          ),
+        ],
+      ),
       floatingActionButton: canCreate
           ? FloatingActionButton(
               onPressed: () => _openForm(),
@@ -430,6 +492,7 @@ class _UsersScreenState extends State<UsersScreen> {
                                     row['email']?.toString() ?? '',
                                     if (roleName != null && roleName.isNotEmpty)
                                       roleName,
+                                    _statusLabel(row['status']?.toString()),
                                   ].where((e) => e.isNotEmpty).join(' · '),
                                 ),
                                 trailing: PopupMenuButton<String>(

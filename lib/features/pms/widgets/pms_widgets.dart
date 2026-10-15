@@ -462,3 +462,26 @@ Future<bool> confirmAction(
   );
   return result == true;
 }
+
+class ListDeleteMenu extends StatelessWidget {
+  const ListDeleteMenu({super.key, required this.onDelete});
+
+  final VoidCallback? onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    return PopupMenuButton<String>(
+      tooltip: 'More',
+      icon: const Icon(Icons.more_vert),
+      onSelected: (value) {
+        if (value == 'delete') onDelete?.call();
+      },
+      itemBuilder: (_) => const [
+        PopupMenuItem(
+          value: 'delete',
+          child: Text('Delete', style: TextStyle(color: AppTheme.danger)),
+        ),
+      ],
+    );
+  }
+}

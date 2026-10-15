@@ -41,6 +41,9 @@ class InventoryOpsApi {
     );
   }
 
+  Future<List<int>> exportIns([Map<String, dynamic>? params]) =>
+      _client.downloadBytes('/inventory-ins/export', queryParameters: cleanQuery(params));
+
   Future<PaginatedResult> outs([Map<String, dynamic>? params]) async {
     final res = await _client.get<Map<String, dynamic>>(
       '/inventory-outs',
@@ -51,6 +54,9 @@ class InventoryOpsApi {
       pagination: unwrapPagination(res.data),
     );
   }
+
+  Future<List<int>> exportOuts([Map<String, dynamic>? params]) =>
+      _client.downloadBytes('/inventory-outs/export', queryParameters: cleanQuery(params));
 
   Future<List<Map<String, dynamic>>> availableStock([Map<String, dynamic>? params]) async {
     final res = await _client.get<Map<String, dynamic>>(
@@ -89,6 +95,17 @@ class InventoryOpsApi {
     return unwrapDataMap(res.data);
   }
 
+  Future<Map<String, dynamic>> updateImr(String id, Map<String, dynamic> data) async {
+    final res = await _client.put<Map<String, dynamic>>('/material-issue-records/$id', data: data);
+    return unwrapDataMap(res.data);
+  }
+
+  Future<void> deleteImr(String id) =>
+      _client.delete<Map<String, dynamic>>('/material-issue-records/$id');
+
+  Future<List<int>> downloadImrPdf(String id) =>
+      _client.downloadBytes('/material-issue-records/$id/download-pdf');
+
   Future<PaginatedResult> listTransfers([Map<String, dynamic>? params]) async {
     final res = await _client.get<Map<String, dynamic>>(
       '/inter-site-transfers',
@@ -113,10 +130,26 @@ class InventoryOpsApi {
     return unwrapDataMap(res.data);
   }
 
+  Future<List<int>> downloadTransferPdf(String id) =>
+      _client.downloadBytes('/inter-site-transfers/$id/download-pdf');
+
+  Future<List<Map<String, dynamic>>> transferHistory(String id) async {
+    final res = await _client.get<Map<String, dynamic>>('/inter-site-transfers/$id/history');
+    return asMapList(unwrapDataList(res.data));
+  }
+
   Future<Map<String, dynamic>> createTransfer(Map<String, dynamic> data) async {
     final res = await _client.post<Map<String, dynamic>>('/inter-site-transfers', data: data);
     return unwrapDataMap(res.data);
   }
+
+  Future<Map<String, dynamic>> updateTransfer(String id, Map<String, dynamic> data) async {
+    final res = await _client.put<Map<String, dynamic>>('/inter-site-transfers/$id', data: data);
+    return unwrapDataMap(res.data);
+  }
+
+  Future<void> deleteTransfer(String id) =>
+      _client.delete<Map<String, dynamic>>('/inter-site-transfers/$id');
 
   Future<Map<String, dynamic>> updateTransferStatus(String id, String status) async {
     final res = await _client.patch<Map<String, dynamic>>(
@@ -170,6 +203,13 @@ class InventoryOpsApi {
     final res = await _client.post<Map<String, dynamic>>('/scrapes', data: data);
     return unwrapDataMap(res.data);
   }
+
+  Future<Map<String, dynamic>> updateScrap(String id, Map<String, dynamic> data) async {
+    final res = await _client.put<Map<String, dynamic>>('/scrapes/$id', data: data);
+    return unwrapDataMap(res.data);
+  }
+
+  Future<void> deleteScrap(String id) => _client.delete<Map<String, dynamic>>('/scrapes/$id');
 
   Future<Map<String, dynamic>> approveScrap(String id, Map<String, dynamic> data) async {
     final res = await _client.patch<Map<String, dynamic>>('/scrapes/$id/approval', data: data);

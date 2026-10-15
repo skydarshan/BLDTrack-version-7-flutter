@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/api_helpers.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/widgets/sort_menu.dart';
 import '../../../core/theme/modern_widgets.dart';
 import '../services/pms_services.dart';
 import '../utils/pms_constants.dart';
@@ -31,6 +32,7 @@ class _TasksListScreenState extends State<TasksListScreen> {
   String? _error;
   bool _mine = false;
   String _search = '';
+  int _loadGen = 0;
   String? _status;
   String? _projectId;
   String _projectLabel = '';
@@ -44,6 +46,19 @@ class _TasksListScreenState extends State<TasksListScreen> {
   List<OptionItem> _projects = const [];
   int _page = 1;
   bool _hasMore = false;
+  bool _boardView = false;
+  Map<String, dynamic>? _board;
+  String _sortBy = 'updatedAt';
+  String _sortOrder = 'desc';
+
+  static const _sortChoices = [
+    SortChoice(by: 'updatedAt', order: 'desc', label: 'Recently updated'),
+    SortChoice(by: 'updatedAt', order: 'asc', label: 'Least recently updated'),
+    SortChoice(by: 'title', order: 'asc', label: 'Title A–Z'),
+    SortChoice(by: 'title', order: 'desc', label: 'Title Z–A'),
+    SortChoice(by: 'due_date', order: 'asc', label: 'Due date'),
+    SortChoice(by: 'priority', order: 'desc', label: 'Priority'),
+  ];
 
   @override
   void initState() {
@@ -127,6 +142,8 @@ class _TasksListScreenState extends State<TasksListScreen> {
   }
 
   Future<void> _load({bool reset = false}) async {
+    final gen = ++_loadGen;
+    final search = _search.trim();
     if (reset) {
       _page = 1;
       setState(() {
@@ -136,16 +153,34 @@ class _TasksListScreenState extends State<TasksListScreen> {
     }
     try {
       final api = context.read<PmsServices>();
+      if (_boardView) {
+        if (_projectId == null || _projectId!.isEmpty) {
+          if (!mounted || gen != _loadGen) return;
+          setState(() {
+            _board = null;
+            _loading = false;
+            _error = null;
+          });
+          return;
+        }
+        final board = await api.tasks.board(projectId: _projectId!);
+        if (!mounted || gen != _loadGen) return;
+        setState(() {
+          _board = board;
+          _loading = false;
+        });
+        return;
+      }
       final listStatus = _mine ? _status : PmsConstants.toListApiStatus(_status);
       final params = <String, dynamic>{
         'page': _page,
         'limit': 20,
+        if (search.isNotEmpty) 'search': search,
         'status': listStatus,
         'project': _projectId,
         if (_siteId != null) 'site': _siteId,
-        'sortBy': 'updatedAt',
-        'sortOrder': 'desc',
-        if (!_mine) 'search': _search,
+        'sortBy': _sortBy,
+        'sortOrder': _sortOrder,
       };
 
       final results = await Future.wait([
@@ -155,7 +190,7 @@ class _TasksListScreenState extends State<TasksListScreen> {
           if (_siteId != null) 'site': _siteId,
         }).catchError((_) => <String, dynamic>{}),
       ]);
-      if (!mounted) return;
+      if (!mounted || gen != _loadGen) return;
       final list = results[0] as dynamic;
       final counts = results[1] as Map<String, dynamic>;
       final totalPages = list.pagination?['totalPages'];
@@ -171,17 +206,38 @@ class _TasksListScreenState extends State<TasksListScreen> {
         _loading = false;
       });
     } on ApiException catch (e) {
-      if (!mounted) return;
+      if (!mounted || gen != _loadGen) return;
       setState(() {
         _error = e.message;
         _loading = false;
       });
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || gen != _loadGen) return;
       setState(() {
         _error = e.toString();
         _loading = false;
       });
+    }
+  }
+
+  Future<void> _deleteTask(Map<String, dynamic> task) async {
+    final id = idOf(task);
+    if (id == null) return;
+    final title = task['title']?.toString().trim();
+    final ok = await confirmAction(
+      context,
+      title: 'Delete task?',
+      message: '${title == null || title.isEmpty ? 'This task' : title} cannot be undone.',
+      confirmLabel: 'Delete',
+    );
+    if (!ok || !mounted) return;
+    try {
+      await context.read<PmsServices>().tasks.delete(id);
+      if (!mounted) return;
+      showPmsSnack(context, 'Task deleted');
+      _load(reset: true);
+    } on ApiException catch (e) {
+      if (mounted) showPmsSnack(context, e.message, error: true);
     }
   }
 
@@ -254,7 +310,7 @@ class _TasksListScreenState extends State<TasksListScreen> {
             child: TextField(
               controller: _searchCtrl,
               decoration: const InputDecoration(
-                hintText: 'Search tasks…',
+                hintText: 'Search title, project or site…',
                 prefixIcon: Icon(Icons.search),
               ),
               onChanged: _onSearch,
@@ -265,6 +321,30 @@ class _TasksListScreenState extends State<TasksListScreen> {
             padding: AppTheme.chipRowPadding,
             child: Row(
               children: [
+                SegmentedButton<bool>(
+                  segments: const [
+                    ButtonSegment(value: false, label: Text('List')),
+                    ButtonSegment(value: true, label: Text('Board')),
+                  ],
+                  selected: {_boardView},
+                  onSelectionChanged: (selected) {
+                    setState(() => _boardView = selected.first);
+                    _load(reset: true);
+                  },
+                ),
+                const SizedBox(width: 8),
+                SortMenuButton(
+                  choices: _sortChoices,
+                  sortBy: _sortBy,
+                  sortOrder: _sortOrder,
+                  onSelected: (by, order) {
+                    setState(() {
+                      _sortBy = by;
+                      _sortOrder = order;
+                    });
+                    _load(reset: true);
+                  },
+                ),
                 FilterChip(
                   label: Text(_siteId == null ? 'Site' : _siteLabel),
                   selected: _siteId != null,
@@ -339,10 +419,24 @@ class _TasksListScreenState extends State<TasksListScreen> {
           Expanded(
             child: RefreshIndicator(
               onRefresh: () => _load(reset: true),
-              child: _loading && _items.isEmpty
+              child: _loading && (_boardView ? _board == null : _items.isEmpty)
                   ? const CenteredScrollLoader()
-                  : _items.isEmpty
-                      ? EmptyListBody(message: 'No tasks found')
+                  : _boardView
+                      ? _projectId == null
+                          ? const EmptyListBody(
+                              message: 'Select a project to open the task board',
+                            )
+                          : _StandaloneTaskBoard(
+                              board: _board,
+                              onOpen: (id) => context.push('/pms/tasks/$id'),
+                              onChangeStatus: _changeBoardStatus,
+                            )
+                      : _items.isEmpty
+                      ? EmptyListBody(
+                          message: _search.trim().isEmpty && _siteId == null
+                              ? 'No tasks found'
+                              : 'No tasks match this search',
+                        )
                       : ListView.builder(
                           padding: AppTheme.listPadding,
                           itemCount: _items.length + (_hasMore ? 1 : 0),
@@ -381,7 +475,15 @@ class _TasksListScreenState extends State<TasksListScreen> {
                                     ),
                                   ].join(' · '),
                                 ),
-                                trailing: StatusChip(status: t['status']?.toString()),
+                                trailing: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    StatusChip(status: t['status']?.toString()),
+                                    ListDeleteMenu(
+                                      onDelete: id == null ? null : () => _deleteTask(t),
+                                    ),
+                                  ],
+                                ),
                                 onTap: id == null
                                     ? null
                                     : () => context.push('/pms/tasks/$id'),
@@ -396,11 +498,137 @@ class _TasksListScreenState extends State<TasksListScreen> {
     );
   }
 
+  Future<void> _changeBoardStatus(Map<String, dynamic> task, String status) async {
+    final id = idOf(task);
+    if (id == null) return;
+    try {
+      await context.read<PmsServices>().tasks.update(id, {'status': status});
+      if (!mounted) return;
+      showPmsSnack(context, 'Status updated');
+      await _load(reset: true);
+    } on ApiException catch (e) {
+      if (mounted) showPmsSnack(context, e.message, error: true);
+    }
+  }
+
   int _sumCounts(Map<String, dynamic> counts) {
     var sum = 0;
     for (final v in counts.values) {
       if (v is num) sum += v.toInt();
     }
     return sum;
+  }
+}
+
+class _StandaloneTaskBoard extends StatelessWidget {
+  const _StandaloneTaskBoard({
+    required this.board,
+    required this.onOpen,
+    required this.onChangeStatus,
+  });
+
+  final Map<String, dynamic>? board;
+  final ValueChanged<String> onOpen;
+  final void Function(Map<String, dynamic> task, String status) onChangeStatus;
+
+  @override
+  Widget build(BuildContext context) {
+    final groups = board?['groups'] is Map
+        ? Map<String, dynamic>.from(board!['groups'] as Map)
+        : <String, dynamic>{};
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          children: [
+            SizedBox(
+              height: constraints.maxHeight,
+              child: ListView(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.all(12),
+      children: [
+        for (final col in PmsConstants.boardColumns)
+          SizedBox(
+            width: 260,
+            child: Card(
+              margin: const EdgeInsets.only(right: 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Text(
+                      col.$2,
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                  const Divider(height: 1),
+                  Expanded(
+                    child: Builder(
+                      builder: (context) {
+                        final items = groups[col.$1] is List
+                            ? (groups[col.$1] as List)
+                                .whereType<Map>()
+                                .map((e) => Map<String, dynamic>.from(e))
+                                .toList()
+                            : <Map<String, dynamic>>[];
+                        if (items.isEmpty) {
+                          return const Center(
+                            child: Text('Empty', style: TextStyle(color: AppTheme.muted)),
+                          );
+                        }
+                        return ListView.builder(
+                          padding: const EdgeInsets.all(8),
+                          itemCount: items.length,
+                          itemBuilder: (context, i) {
+                            final task = items[i];
+                            final id = idOf(task);
+                            return Card(
+                              margin: const EdgeInsets.only(bottom: 8),
+                              child: ListTile(
+                                dense: true,
+                                title: Text(
+                                  task['title']?.toString() ?? 'Task',
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                subtitle: Text('${task['current_progress'] ?? 0}%'),
+                                onTap: id == null ? null : () => onOpen(id),
+                                onLongPress: () async {
+                                  final picked = await showModalBottomSheet<String>(
+                                    context: context,
+                                    builder: (ctx) => SafeArea(
+                                      child: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          for (final status in PmsConstants.taskSettableStatuses)
+                                            ListTile(
+                                              title: Text(status.$2),
+                                              onTap: () => Navigator.pop(ctx, status.$1),
+                                            ),
+                                        ],
+                                      ),
+                                    ),
+                                  );
+                                  if (picked != null) onChangeStatus(task, picked);
+                                },
+                              ),
+                            );
+                          },
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+      ],
+              ),
+            ),
+          ],
+        );
+      },
+    );
   }
 }

@@ -12,6 +12,19 @@ class OptionItem {
   final Map<String, dynamic>? raw;
 }
 
+bool _optionMatches(OptionItem option, String query) {
+  final q = query.trim().toLowerCase();
+  if (q.isEmpty) return true;
+  if (option.label.toLowerCase().contains(q)) return true;
+  final raw = option.raw;
+  if (raw == null) return false;
+  for (final key in ['site_name', 'name', 'code', 'location', 'vendor_name', 'item_name']) {
+    final text = raw[key]?.toString().toLowerCase() ?? '';
+    if (text.contains(q)) return true;
+  }
+  return false;
+}
+
 Future<OptionItem?> showOptionPicker(
   BuildContext context, {
   required String title,
@@ -27,9 +40,7 @@ Future<OptionItem?> showOptionPicker(
       var query = '';
       return StatefulBuilder(
         builder: (context, setState) {
-          final filtered = options
-              .where((o) => o.label.toLowerCase().contains(query.toLowerCase()))
-              .toList();
+          final filtered = options.where((o) => _optionMatches(o, query)).toList();
           return FittedListSheet(
             title: title,
             topInset: topInset,
@@ -77,9 +88,7 @@ Future<List<String>?> showMultiOptionPicker(
       final chosen = Set<String>.from(selected);
       return StatefulBuilder(
         builder: (context, setState) {
-          final filtered = options
-              .where((o) => o.label.toLowerCase().contains(query.toLowerCase()))
-              .toList();
+          final filtered = options.where((o) => _optionMatches(o, query)).toList();
           return FittedListSheet(
             title: title,
             topInset: topInset,
@@ -269,15 +278,13 @@ class _RenderFittedSheetBox extends RenderBox
     }
 
     final room = (limit - used) < 0 ? 0.0 : limit - used;
+    // Keep the list height finite. An unbounded pass makes a shrink-wrapped
+    // list build every row, which freezes the item catalog picker.
     body.layout(
-      BoxConstraints(minWidth: width, maxWidth: width, maxHeight: double.infinity),
+      BoxConstraints(minWidth: width, maxWidth: width, maxHeight: room),
       parentUsesSize: true,
     );
-    var bodyHeight = body.size.height;
-    if (bodyHeight > room) {
-      body.layout(BoxConstraints.tightFor(width: width, height: room), parentUsesSize: true);
-      bodyHeight = room;
-    }
+    final bodyHeight = body.size.height;
 
     var y = 0.0;
     for (final part in kids) {
@@ -344,12 +351,15 @@ class _SheetOptionListState extends State<_SheetOptionList> {
 
   @override
   Widget build(BuildContext context) {
+    // Short menus hug their rows. Long catalogs must not shrink-wrap, or the
+    // sheet lays out every row and the app stops responding.
+    final hug = widget.itemCount <= 24;
     return Scrollbar(
       controller: _controller,
       thumbVisibility: _overflows,
       child: ListView.builder(
         controller: _controller,
-        shrinkWrap: true,
+        shrinkWrap: hug,
         primary: false,
         padding: EdgeInsets.zero,
         itemCount: widget.itemCount,

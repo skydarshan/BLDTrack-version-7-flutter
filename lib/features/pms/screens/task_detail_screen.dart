@@ -11,6 +11,14 @@ import '../widgets/media_widgets.dart';
 import '../widgets/pickers.dart';
 import '../widgets/pms_widgets.dart';
 
+String _approvalStepsOf(Map<String, dynamic>? task) {
+  final completion = task?['completion'];
+  if (completion is Map && completion['required_steps'] != null) {
+    return completion['required_steps'].toString();
+  }
+  return '—';
+}
+
 class TaskDetailScreen extends StatefulWidget {
   const TaskDetailScreen({super.key, required this.taskId});
 
@@ -31,6 +39,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
   String? _mediaError;
   List<PendingFile> _pendingMedia = [];
   List<OptionItem> _users = const [];
+  bool _commentsLocked = false;
 
   @override
   void initState() {
@@ -52,12 +61,16 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
         api.tasks.listComments(widget.taskId).catchError((_) => <Map<String, dynamic>>[]),
       ]);
       if (!mounted) return;
+      final task = results[0] as Map<String, dynamic>;
       final progress = results[1] as dynamic;
+      final commentsLocked = await _projectIsArchived(api, task);
+      if (!mounted) return;
       setState(() {
-        _task = results[0] as Map<String, dynamic>;
+        _task = task;
         _progress = progress.items as List<Map<String, dynamic>>;
         _users = mapToOptions(results[2] as List<Map<String, dynamic>>);
         _comments = results[3] as List<Map<String, dynamic>>;
+        _commentsLocked = commentsLocked;
         _loading = false;
       });
     } on ApiException catch (e) {
@@ -75,14 +88,28 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
     }
   }
 
-  bool get _projectArchived {
-    final project = _task?['project'];
-    if (project is Map) return project['status']?.toString() == 'archived';
-    return false;
+  bool _archivedRow(dynamic project) {
+    if (project is! Map) return false;
+    if (project['status']?.toString() == 'archived') return true;
+    final archivedAt = project['archivedAt']?.toString().trim() ?? '';
+    return archivedAt.isNotEmpty && archivedAt != 'null';
+  }
+
+  Future<bool> _projectIsArchived(PmsServices api, Map<String, dynamic> task) async {
+    final project = task['project'];
+    if (_archivedRow(project)) return true;
+    final id = idOf(project);
+    if (id == null) return false;
+    try {
+      final full = await api.projects.getById(id);
+      return _archivedRow(full);
+    } catch (_) {
+      return false;
+    }
   }
 
   Future<void> _sendComment() async {
-    if (_projectArchived) {
+    if (_commentsLocked) {
       showPmsSnack(context, 'Cannot comment on a task in an archived project', error: true);
       return;
     }
@@ -389,16 +416,28 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
   }
 
   Future<void> _changeStatus() async {
+    final current = _task?['status']?.toString();
     final picked = await showOptionPicker(
       context,
       title: 'Set status',
       options: [
         for (final s in PmsConstants.taskSettableStatuses)
           OptionItem(value: s.$1, label: s.$2),
+        if (current != 'completed')
+          const OptionItem(value: 'completed', label: 'Complete'),
       ],
-      selected: _task?['status']?.toString(),
+      selected: current,
     );
     if (picked == null || !mounted) return;
+    if (picked.value == 'completed') {
+      final progress = _asNum(_task?['current_progress'] ?? 0);
+      if (progress < 100) {
+        showPmsSnack(context, 'Task is not at 100% yet', error: true);
+        return;
+      }
+      await _markComplete();
+      return;
+    }
     try {
       await context
           .read<PmsServices>()
@@ -542,6 +581,22 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                                 'Coordinator: ${labelOf(task?['coordinator'])}',
                                 style: const TextStyle(color: AppTheme.muted),
                               ),
+                              Text(
+                                'Location: ${labelOf(task?['location'])}',
+                                style: const TextStyle(color: AppTheme.muted),
+                              ),
+                              Text(
+                                'Contractor: ${labelOf(task?['contractor'])}',
+                                style: const TextStyle(color: AppTheme.muted),
+                              ),
+                              Text(
+                                'Sequence: ${task?['sequence'] ?? '—'} · Duration: ${task?['duration_days'] ?? '—'} days',
+                                style: const TextStyle(color: AppTheme.muted),
+                              ),
+                              Text(
+                                'Approval steps: ${_approvalStepsOf(task)}',
+                                style: const TextStyle(color: AppTheme.muted),
+                              ),
                             ],
                           ),
                         ),
@@ -683,16 +738,16 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                           Expanded(
                             child: TextField(
                               controller: _commentCtrl,
-                              enabled: !_projectArchived,
+                              enabled: !_commentsLocked,
                               decoration: InputDecoration(
-                                hintText: _projectArchived
+                                hintText: _commentsLocked
                                     ? 'Project is archived'
                                     : 'Add a comment',
                               ),
                             ),
                           ),
                           IconButton(
-                            onPressed: _projectArchived ? null : _sendComment,
+                            onPressed: _commentsLocked ? null : _sendComment,
                             icon: const Icon(Icons.send),
                           ),
                         ],

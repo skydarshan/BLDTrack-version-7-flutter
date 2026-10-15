@@ -6,6 +6,7 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/network/api_helpers.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/theme/modern_widgets.dart';
+import '../../../core/widgets/motion.dart';
 import '../../app/app_shell.dart';
 import '../services/pms_services.dart';
 import '../utils/site_options.dart';
@@ -52,8 +53,9 @@ class _PmsHomeScreenState extends State<PmsHomeScreen> {
       _error = null;
     });
     try {
-      final overview =
-          await context.read<PmsServices>().dashboard.pmsOverview(siteId: _siteId);
+      final overview = await context.read<PmsServices>().dashboard.pmsOverview(
+        siteId: _siteId,
+      );
       if (!mounted) return;
       setState(() {
         _overview = overview;
@@ -97,22 +99,22 @@ class _PmsHomeScreenState extends State<PmsHomeScreen> {
     if (_siteId == null || _siteId!.isEmpty) return path;
     final uri = Uri.parse(path);
     return uri
-        .replace(queryParameters: {
-          ...uri.queryParameters,
-          'site': _siteId!,
-        })
+        .replace(queryParameters: {...uri.queryParameters, 'site': _siteId!})
         .toString();
   }
 
   @override
   Widget build(BuildContext context) {
     final overview = _overview;
-    final projects =
-        (overview?['projects'] is Map) ? Map<String, dynamic>.from(overview!['projects'] as Map) : null;
-    final tasks =
-        (overview?['tasks'] is Map) ? Map<String, dynamic>.from(overview!['tasks'] as Map) : null;
-    final myWork =
-        (overview?['my_work'] is Map) ? Map<String, dynamic>.from(overview!['my_work'] as Map) : null;
+    final projects = (overview?['projects'] is Map)
+        ? Map<String, dynamic>.from(overview!['projects'] as Map)
+        : null;
+    final tasks = (overview?['tasks'] is Map)
+        ? Map<String, dynamic>.from(overview!['tasks'] as Map)
+        : null;
+    final myWork = (overview?['my_work'] is Map)
+        ? Map<String, dynamic>.from(overview!['my_work'] as Map)
+        : null;
 
     final ready = (myWork?['ready_for_completion'] is num)
         ? (myWork!['ready_for_completion'] as num).toInt()
@@ -126,211 +128,307 @@ class _PmsHomeScreenState extends State<PmsHomeScreen> {
 
     final recent = (projects?['recent'] is List)
         ? (projects!['recent'] as List)
-            .whereType<Map>()
-            .map((e) => Map<String, dynamic>.from(e))
-            .take(5)
-            .toList()
+              .whereType<Map>()
+              .map((e) => Map<String, dynamic>.from(e))
+              .take(5)
+              .toList()
         : <Map<String, dynamic>>[];
 
     final avg = projects?['avg_progress'];
 
     return Scaffold(
       extendBody: true,
-      body: RefreshIndicator(
-        onRefresh: _load,
-        edgeOffset: 72,
-        child: CustomScrollView(
-          slivers: [
-            SliverAppBar(
-              pinned: true,
-              elevation: 0,
-              scrolledUnderElevation: 0,
-              toolbarHeight: 68,
-              backgroundColor: Colors.transparent,
-              foregroundColor: Colors.white,
-              automaticallyImplyLeading: false,
-              centerTitle: false,
-              titleSpacing: 16,
-              title: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    'Project Management',
-                    style: AppTheme.headlineSmall.copyWith(
-                      color: Colors.white,
-                      fontSize: 17,
-                      height: 1.15,
+      body: StaggeredEntrance(
+        active: !_loading,
+        child: RefreshIndicator(
+          onRefresh: _load,
+          edgeOffset: 72,
+          child: CustomScrollView(
+            slivers: [
+              SliverAppBar(
+                pinned: true,
+                elevation: 0,
+                scrolledUnderElevation: 0,
+                toolbarHeight: 68,
+                backgroundColor: Colors.transparent,
+                foregroundColor: Colors.white,
+                automaticallyImplyLeading: false,
+                centerTitle: false,
+                titleSpacing: 16,
+                title: StaggeredEntrance(
+                  maxIndex: 0,
+                  slide: 20,
+                  child: EntranceItem(
+                    index: 0,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          'Project Management',
+                          style: AppTheme.headlineSmall.copyWith(
+                            color: Colors.white,
+                            fontSize: 17,
+                            height: 1.15,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          _siteLabel,
+                          style: AppTheme.bodySmall.copyWith(
+                            color: Colors.white.withValues(alpha: 0.85),
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  const SizedBox(height: 2),
-                  Text(
-                    _siteLabel,
-                    style: AppTheme.bodySmall.copyWith(
-                      color: Colors.white.withValues(alpha: 0.85),
-                      fontSize: 12,
+                ),
+                actions: [
+                  const PressScale(child: WorkspaceSwitcherButton()),
+                  PressScale(
+                    child: IconButton(
+                      tooltip: 'Filter site',
+                      onPressed: _pickSite,
+                      icon: const Icon(Icons.tune_rounded),
                     ),
                   ),
+                  const PressScale(child: UserProfileButton()),
                 ],
-              ),
-              actions: [
-                const WorkspaceSwitcherButton(),
-                IconButton(
-                  tooltip: 'Filter site',
-                  onPressed: _pickSite,
-                  icon: const Icon(Icons.tune_rounded),
-                ),
-                const UserProfileButton(),
-              ],
-              flexibleSpace: Container(
-                decoration: BoxDecoration(
-                  gradient: AppTheme.brandGradient,
-                  borderRadius: const BorderRadius.vertical(bottom: Radius.circular(20)),
-                ),
-              ),
-            ),
-            SliverPadding(
-              padding: AppTheme.pagePadding,
-              sliver: _loading
-                  ? const SliverFillRemaining(
-                      hasScrollBody: false,
-                      child: Center(child: CircularProgressIndicator()),
-                    )
-                  : SliverList(
-                      delegate: SliverChildListDelegate([
-                        if (_error != null) ...[
-                          ErrorBanner(message: _error!, onRetry: _load),
-                          const SizedBox(height: 8),
-                        ],
-                        if (ready > 0 || pending > 0) ...[
-                          _VerificationBanner(
-                            ready: ready,
-                            pending: pending,
-                            onReady: () => context.go('/pms/approvals'),
-                            onPending: () => context.go('/pms/approvals'),
-                          ),
-                          const SizedBox(height: 8),
-                        ],
-                        LayoutBuilder(
-                          builder: (context, constraints) {
-                            // Original card proportion. On a wide window, height stays at the
-                            // phone size so the cards do not stretch and open a gap above
-                            // Overall progress. Width still fills the page.
-                            final measureWidth = constraints.maxWidth > 400
-                                ? 400.0
-                                : constraints.maxWidth;
-                            final cardH = ((measureWidth - AppTheme.gridGap) / 2) * 0.78;
-                            Widget tile(Widget child) => Expanded(child: child);
-                            return Column(
-                              children: [
-                                SizedBox(
-                                  height: cardH,
-                                  child: Row(
-                                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                                    children: [
-                                      tile(BentoStatCard(
-                                        expand: true,
-                                        badgeSize: 44,
-                                        glyphSize: 24,
-                                        label: 'Projects',
-                                        value: '${projects?['total'] ?? 0}',
-                                        icon: Icons.folder_special_rounded,
-                                        color: AppTheme.info,
-                                        onTap: () => context.go(_withSite('/pms/projects')),
-                                      )),
-                                      const SizedBox(width: AppTheme.gridGap),
-                                      tile(BentoStatCard(
-                                        expand: true,
-                                        badgeSize: 44,
-                                        glyphSize: 24,
-                                        label: 'Active tasks',
-                                        value: '${tasks?['total'] ?? 0}',
-                                        icon: Icons.task_alt_rounded,
-                                        color: AppTheme.success,
-                                        onTap: () => context.go(_withSite('/pms/tasks')),
-                                      )),
-                                    ],
-                                  ),
-                                ),
-                                const SizedBox(height: AppTheme.gridGap),
-                                SizedBox(
-                                  height: cardH,
-                                  child: Row(
-                                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                                    children: [
-                                      tile(BentoStatCard(
-                                        expand: true,
-                                        badgeSize: 44,
-                                        glyphSize: 24,
-                                        label: 'Overdue',
-                                        value: '$overdue',
-                                        icon: Icons.warning_amber_rounded,
-                                        color: overdue > 0 ? AppTheme.danger : AppTheme.muted,
-                                        highlight: overdue > 0,
-                                        onTap: () => context.go(_withSite('/pms/tasks?mine=1')),
-                                      )),
-                                      const SizedBox(width: AppTheme.gridGap),
-                                      tile(BentoStatCard(
-                                        expand: true,
-                                        badgeSize: 44,
-                                        glyphSize: 24,
-                                        label: 'Approvals',
-                                        value: '${ready + pending}',
-                                        hint: pending > 0 || ready > 0
-                                            ? '$ready ready Â· $pending final'
-                                            : null,
-                                        icon: Icons.verified_rounded,
-                                        color: (ready + pending) > 0
-                                            ? AppTheme.accent
-                                            : AppTheme.muted,
-                                        highlight: (ready + pending) > 0,
-                                        onTap: () => context.go('/pms/approvals'),
-                                      )),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            );
-                          },
-                        ),
-                        if (avg != null) ...[
-                          const SizedBox(height: AppTheme.gridGap),
-                          _ProgressStrip(percent: avg),
-                        ],
-                        const SizedBox(height: AppTheme.sectionGap),
-                        SectionHeader(
-                          title: 'Recent projects',
-                          color: AppTheme.brand,
-                          trailing: TextButton(
-                            onPressed: () => context.go(_withSite('/pms/projects')),
-                            child: const Text('See all'),
-                          ),
-                        ),
-                        if (recent.isEmpty)
-                          const EmptyState(message: 'No recent projects')
-                        else
-                          ...recent.asMap().entries.map((entry) {
-                            final p = entry.value;
-                            final i = entry.key;
-                            final id = idOf(p);
-                            return ModernListCard(
-                              title: p['project_name']?.toString() ?? labelOf(p),
-                              subtitle: [
-                                statusLabel(p['status']?.toString()),
-                                if (p['site'] != null) labelOf(p['site']),
-                              ].join(' Â· '),
-                              icon: Icons.folder_special_rounded,
-                              color: AppTheme.colorAt(i),
-                              trailing: StatusChip(status: p['status']?.toString()),
-                              onTap: id == null
-                                  ? null
-                                  : () => context.push('/pms/projects/$id'),
-                            );
-                          }),
-                      ]),
+                flexibleSpace: Container(
+                  decoration: BoxDecoration(
+                    gradient: AppTheme.brandGradient,
+                    borderRadius: const BorderRadius.vertical(
+                      bottom: Radius.circular(20),
                     ),
-            ),
-          ],
+                  ),
+                ),
+              ),
+              SliverPadding(
+                padding: AppTheme.pagePadding,
+                sliver: _loading
+                    ? const SliverFillRemaining(
+                        hasScrollBody: false,
+                        child: Center(child: CircularProgressIndicator()),
+                      )
+                    : SliverList(
+                        delegate: SliverChildListDelegate([
+                          if (_error != null) ...[
+                            EntranceItem(
+                              index: 0,
+                              child: ErrorBanner(
+                                message: _error!,
+                                onRetry: _load,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                          ],
+                          if (ready > 0 || pending > 0) ...[
+                            EntranceItem(
+                              index: 1,
+                              child: _VerificationBanner(
+                                ready: ready,
+                                pending: pending,
+                                onReady: () => context.go('/pms/approvals'),
+                                onPending: () => context.go('/pms/approvals'),
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                          ],
+                          LayoutBuilder(
+                            builder: (context, constraints) {
+                              // Original card proportion. On a wide window, height stays at the
+                              // phone size so the cards do not stretch and open a gap above
+                              // Overall progress. Width still fills the page.
+                              final measureWidth = constraints.maxWidth > 400
+                                  ? 400.0
+                                  : constraints.maxWidth;
+                              final cardH =
+                                  ((measureWidth - AppTheme.gridGap) / 2) *
+                                  0.78;
+                              Widget tile(Widget child) =>
+                                  Expanded(child: child);
+                              return Column(
+                                children: [
+                                  SizedBox(
+                                    height: cardH,
+                                    child: Row(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.stretch,
+                                      children: [
+                                        tile(
+                                          EntranceItem(
+                                            index: 2,
+                                            child: PressScale(
+                                              child: BentoStatCard(
+                                                expand: true,
+                                                badgeSize: 44,
+                                                glyphSize: 24,
+                                                label: 'Projects',
+                                                value:
+                                                    '${projects?['total'] ?? 0}',
+                                                icon: Icons
+                                                    .folder_special_rounded,
+                                                color: AppTheme.info,
+                                                onTap: () => context.go(
+                                                  _withSite('/pms/projects'),
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                        const SizedBox(width: AppTheme.gridGap),
+                                        tile(
+                                          EntranceItem(
+                                            index: 3,
+                                            child: PressScale(
+                                              child: BentoStatCard(
+                                                expand: true,
+                                                badgeSize: 44,
+                                                glyphSize: 24,
+                                                label: 'Active tasks',
+                                                value:
+                                                    '${tasks?['total'] ?? 0}',
+                                                icon: Icons.task_alt_rounded,
+                                                color: AppTheme.success,
+                                                onTap: () => context.go(
+                                                  _withSite('/pms/tasks'),
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(height: AppTheme.gridGap),
+                                  SizedBox(
+                                    height: cardH,
+                                    child: Row(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.stretch,
+                                      children: [
+                                        tile(
+                                          EntranceItem(
+                                            index: 4,
+                                            child: PressScale(
+                                              child: BentoStatCard(
+                                                expand: true,
+                                                badgeSize: 44,
+                                                glyphSize: 24,
+                                                label: 'Overdue',
+                                                value: '$overdue',
+                                                icon:
+                                                    Icons.warning_amber_rounded,
+                                                color: overdue > 0
+                                                    ? AppTheme.danger
+                                                    : AppTheme.muted,
+                                                highlight: overdue > 0,
+                                                onTap: () => context.go(
+                                                  _withSite(
+                                                    '/pms/tasks?mine=1',
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                        const SizedBox(width: AppTheme.gridGap),
+                                        tile(
+                                          EntranceItem(
+                                            index: 5,
+                                            child: PressScale(
+                                              child: BentoStatCard(
+                                                expand: true,
+                                                badgeSize: 44,
+                                                glyphSize: 24,
+                                                label: 'Approvals',
+                                                value: '${ready + pending}',
+                                                hint: pending > 0 || ready > 0
+                                                    ? '$ready ready Â· $pending final'
+                                                    : null,
+                                                icon: Icons.verified_rounded,
+                                                color: (ready + pending) > 0
+                                                    ? AppTheme.accent
+                                                    : AppTheme.muted,
+                                                highlight:
+                                                    (ready + pending) > 0,
+                                                onTap: () => context.go(
+                                                  '/pms/approvals',
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              );
+                            },
+                          ),
+                          if (avg != null) ...[
+                            const SizedBox(height: AppTheme.gridGap),
+                            EntranceItem(
+                              index: 6,
+                              child: _ProgressStrip(percent: avg),
+                            ),
+                          ],
+                          const SizedBox(height: AppTheme.sectionGap),
+                          EntranceItem(
+                            index: 6,
+                            child: SectionHeader(
+                              title: 'Recent projects',
+                              color: AppTheme.brand,
+                              trailing: PressScale(
+                                child: TextButton(
+                                  onPressed: () =>
+                                      context.go(_withSite('/pms/projects')),
+                                  child: const Text('See all'),
+                                ),
+                              ),
+                            ),
+                          ),
+                          if (recent.isEmpty)
+                            const EntranceItem(
+                              index: 6,
+                              child: EmptyState(message: 'No recent projects'),
+                            )
+                          else
+                            ...recent.asMap().entries.map((entry) {
+                              final p = entry.value;
+                              final i = entry.key;
+                              final id = idOf(p);
+                              return EntranceItem(
+                                index: 6,
+                                child: PressScale(
+                                  enabled: id != null,
+                                  child: ModernListCard(
+                                    title:
+                                        p['project_name']?.toString() ??
+                                        labelOf(p),
+                                    subtitle: [
+                                      statusLabel(p['status']?.toString()),
+                                      if (p['site'] != null) labelOf(p['site']),
+                                    ].join(' Â· '),
+                                    icon: Icons.folder_special_rounded,
+                                    color: AppTheme.colorAt(i),
+                                    trailing: StatusChip(
+                                      status: p['status']?.toString(),
+                                    ),
+                                    onTap: id == null
+                                        ? null
+                                        : () =>
+                                              context.push('/pms/projects/$id'),
+                                  ),
+                                ),
+                              );
+                            }),
+                        ]),
+                      ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -365,7 +463,11 @@ class _VerificationBanner extends StatelessWidget {
         children: [
           Row(
             children: [
-              const Icon(Icons.fact_check_rounded, size: 16, color: AppTheme.brand),
+              const Icon(
+                Icons.fact_check_rounded,
+                size: 16,
+                color: AppTheme.brand,
+              ),
               const SizedBox(width: 8),
               Text('Needs your attention', style: AppTheme.titleSmall),
             ],
@@ -407,35 +509,45 @@ class _AttentionRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: color.withValues(alpha: 0.08),
-      borderRadius: BorderRadius.circular(12),
-      child: InkWell(
-        onTap: onTap,
+    return PressScale(
+      child: Material(
+        color: color.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          child: Row(
-            children: [
-              Expanded(child: Text(label, style: AppTheme.titleSmall.copyWith(fontSize: 13))),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: color,
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                child: Text(
-                  '$count',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w800,
-                    fontSize: 12,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(12),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    label,
+                    style: AppTheme.titleSmall.copyWith(fontSize: 13),
                   ),
                 ),
-              ),
-              const SizedBox(width: 4),
-              Icon(Icons.chevron_right_rounded, color: color, size: 20),
-            ],
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: color,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    '$count',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 4),
+                Icon(Icons.chevron_right_rounded, color: color, size: 20),
+              ],
+            ),
           ),
         ),
       ),
@@ -450,15 +562,17 @@ class _ProgressStrip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final v = percent is num ? percent.toDouble() : double.tryParse('$percent') ?? 0;
+    final v = percent is num
+        ? percent.toDouble()
+        : double.tryParse('$percent') ?? 0;
     final clamped = (v / 100).clamp(0.0, 1.0);
     final color = v >= 100
         ? AppTheme.success
         : v >= 60
-            ? AppTheme.info
-            : v >= 30
-                ? AppTheme.warning
-                : AppTheme.danger;
+        ? AppTheme.info
+        : v >= 30
+        ? AppTheme.warning
+        : AppTheme.danger;
 
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
@@ -473,7 +587,10 @@ class _ProgressStrip extends StatelessWidget {
         children: [
           Row(
             children: [
-              Text('Overall progress', style: AppTheme.titleSmall.copyWith(fontSize: 13)),
+              Text(
+                'Overall progress',
+                style: AppTheme.titleSmall.copyWith(fontSize: 13),
+              ),
               const Spacer(),
               Text(
                 '${v.round()}%',

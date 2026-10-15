@@ -44,10 +44,13 @@ class _ProjectFormScreenState extends State<ProjectFormScreen> {
   String _priorityOff = 'medium';
   DateTime? _startDate;
   DateTime? _endDate;
+  DateTime? _actualStart;
+  DateTime? _actualEnd;
 
   String? _siteId;
   String _siteLabel = '';
   Map<String, dynamic>? _siteRaw;
+  Map<String, dynamic>? _loaded;
   Timer? _codeTimer;
   int _codeReq = 0;
   int _previewSeq = 1;
@@ -57,8 +60,10 @@ class _ProjectFormScreenState extends State<ProjectFormScreen> {
   String _managerLabel = '';
   String? _leadId;
   String _leadLabel = '';
+  String? _coordinatorId;
+  String _coordinatorLabel = '';
+  List<PendingFile> _pendingMedia = [];
 
-  List<PendingFile> _files = [];
   List<OptionItem> _users = const [];
   final _fieldErrors = FieldErrors();
 
@@ -91,14 +96,17 @@ class _ProjectFormScreenState extends State<ProjectFormScreen> {
         _managerLabel = me.name;
         _leadId = me.id;
         _leadLabel = me.name;
+        _coordinatorId = me.id;
+        _coordinatorLabel = me.name;
       }
       if (widget.isEdit) {
         final project = await api.projects.getById(widget.projectId!);
+        _loaded = project;
         _nameCtrl.text = project['project_name']?.toString() ?? '';
         _codeCtrl.text = project['code']?.toString() ?? '';
         _descCtrl.text = project['description']?.toString() ?? '';
         final status = project['status']?.toString();
-        _status = (status == null || status == 'archived') ? 'not_started' : status;
+        _status = (status == null || status.isEmpty) ? 'not_started' : status;
         _priority = project['priority']?.toString() ?? 'medium';
         if (_priority != 'high') _priorityOff = _priority;
         _siteId = idOf(project['site']);
@@ -107,10 +115,14 @@ class _ProjectFormScreenState extends State<ProjectFormScreen> {
         _managerLabel = labelOf(project['project_manager'], fallback: '');
         _leadId = idOf(project['project_lead']);
         _leadLabel = labelOf(project['project_lead'], fallback: '');
+        _coordinatorId = idOf(project['default_coordinator']);
+        _coordinatorLabel = labelOf(project['default_coordinator'], fallback: '');
         final timeline = project['timeline'];
         if (timeline is Map) {
           _startDate = DateTime.tryParse('${timeline['start_date'] ?? ''}');
           _endDate = DateTime.tryParse('${timeline['end_date'] ?? ''}');
+          _actualStart = DateTime.tryParse('${timeline['actual_start_date'] ?? ''}');
+          _actualEnd = DateTime.tryParse('${timeline['actual_end_date'] ?? ''}');
         }
       }
       if (!mounted) return;
@@ -130,22 +142,13 @@ class _ProjectFormScreenState extends State<ProjectFormScreen> {
     }
   }
 
-  Future<void> _pickDate({required bool start}) async {
-    final initial = (start ? _startDate : _endDate) ?? DateTime.now();
-    final picked = await showDatePicker(
+  Future<DateTime?> _pickDate(DateTime? current) {
+    return showDatePicker(
       context: context,
-      initialDate: initial,
+      initialDate: current ?? DateTime.now(),
       firstDate: DateTime(2000),
       lastDate: DateTime(2100),
     );
-    if (picked == null) return;
-    setState(() {
-      if (start) {
-        _startDate = picked;
-      } else {
-        _endDate = picked;
-      }
-    });
   }
 
   String? _iso(DateTime? d) =>
@@ -237,6 +240,15 @@ class _ProjectFormScreenState extends State<ProjectFormScreen> {
             endLabel: 'End date',
           ),
     );
+    _fieldErrors.set(
+      'actualEnd',
+      dateRangeError(
+        start: _actualStart,
+        end: _actualEnd,
+        startLabel: 'Actual start',
+        endLabel: 'Actual end',
+      ),
+    );
     setState(() {});
     return !_fieldErrors.hasErrors;
   }
@@ -246,6 +258,24 @@ class _ProjectFormScreenState extends State<ProjectFormScreen> {
       _priority = value;
       if (value != 'high') _priorityOff = value;
     });
+  }
+
+  Future<void> _removeExistingMedia(String type, String url) async {
+    final id = widget.projectId;
+    if (id == null || id.isEmpty) return;
+    setState(() => _saving = true);
+    final api = context.read<PmsServices>().projects;
+    try {
+      await api.removeMedia(id, {'type': type, 'url': url});
+      final project = await api.getById(id);
+      if (!mounted) return;
+      setState(() => _loaded = project);
+      showPmsSnack(context, 'File removed');
+    } on ApiException catch (e) {
+      if (mounted) showPmsSnack(context, e.message, error: true);
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
   }
 
   Future<void> _submit() async {
@@ -274,7 +304,10 @@ class _ProjectFormScreenState extends State<ProjectFormScreen> {
       final timeline = {
         'start_date': _iso(_startDate),
         'end_date': _iso(_endDate),
+        'actual_start_date': _iso(_actualStart),
+        'actual_end_date': _iso(_actualEnd),
       };
+      final files = _pendingMedia.map((file) => file.toEntry()).toList();
       if (widget.isEdit) {
         await api.update(
           widget.projectId!,
@@ -287,10 +320,11 @@ class _ProjectFormScreenState extends State<ProjectFormScreen> {
             'timeline': timeline,
             'project_manager': _managerId,
             'project_lead': _leadId,
+            'default_coordinator': _coordinatorId,
             if (_reasonCtrl.text.trim().isNotEmpty)
               'reason': _reasonCtrl.text.trim(),
           },
-          files: _files.map((f) => f.toEntry()).toList(),
+          files: files,
         );
       } else {
         await api.create(
@@ -304,7 +338,9 @@ class _ProjectFormScreenState extends State<ProjectFormScreen> {
             'timeline': timeline,
             'project_manager': _managerId,
             'project_lead': _leadId,
+            if (_coordinatorId != null) 'default_coordinator': _coordinatorId,
           },
+          files: files,
         );
       }
       if (!mounted) return;
@@ -430,17 +466,39 @@ class _ProjectFormScreenState extends State<ProjectFormScreen> {
                     errorKey: 'manager',
                     selected: _managerId,
                     onPicked: (picked) {
+                      final followCoordinator =
+                          _coordinatorId == null || _coordinatorId == _managerId;
                       _managerId = picked.value;
                       _managerLabel = picked.label;
+                      if (followCoordinator) {
+                        _coordinatorId = picked.value;
+                        _coordinatorLabel = picked.label;
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  _personField(
+                    label: 'Default coordinator',
+                    required: false,
+                    valueLabel: _coordinatorLabel,
+                    errorKey: 'coordinator',
+                    selected: _coordinatorId,
+                    onPicked: (picked) {
+                      _coordinatorId = picked.value;
+                      _coordinatorLabel = picked.label;
                     },
                   ),
                   if (widget.isEdit) ...[
                     const SizedBox(height: 12),
                     AppDropdownFormField<String>(
+                      key: ValueKey('status-$_status'),
                       initialValue: _status,
                       decoration: const InputDecoration(labelText: 'Status'),
                       items: [
-                        for (final s in PmsConstants.projectStatuses)
+                        for (final s in [
+                          ...PmsConstants.projectStatuses,
+                          if (_status == 'archived') ('archived', 'Archived'),
+                        ])
                           DropdownMenuItem(value: s.$1, child: Text(s.$2)),
                       ],
                       onChanged: (v) => setState(() => _status = v ?? _status),
@@ -458,11 +516,10 @@ class _ProjectFormScreenState extends State<ProjectFormScreen> {
                               : formatDate(_startDate!.toIso8601String()),
                           errorText: _fieldErrors['startDate'],
                           onTap: () async {
-                            await _pickDate(start: true);
-                            if (mounted) {
-                              _fieldErrors.set('startDate', null);
-                              setState(() {});
-                            }
+                            final picked = await _pickDate(_startDate);
+                            if (picked == null || !mounted) return;
+                            _fieldErrors.set('startDate', null);
+                            setState(() => _startDate = picked);
                           },
                         ),
                       ),
@@ -476,14 +533,59 @@ class _ProjectFormScreenState extends State<ProjectFormScreen> {
                               : formatDate(_endDate!.toIso8601String()),
                           errorText: _fieldErrors['endDate'],
                           onTap: () async {
-                            await _pickDate(start: false);
-                            if (mounted) {
-                              _fieldErrors.set('endDate', null);
-                              setState(() {});
-                            }
+                            final picked = await _pickDate(_endDate);
+                            if (picked == null || !mounted) return;
+                            _fieldErrors.set('endDate', null);
+                            setState(() => _endDate = picked);
                           },
                         ),
                       ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: PickerField(
+                          label: 'Actual start',
+                          valueLabel: _actualStart == null
+                              ? ''
+                              : formatDate(_actualStart!.toIso8601String()),
+                          onTap: () async {
+                            final picked = await _pickDate(_actualStart);
+                            if (picked == null || !mounted) return;
+                            setState(() => _actualStart = picked);
+                          },
+                        ),
+                      ),
+                      if (_actualStart != null)
+                        IconButton(
+                          tooltip: 'Clear actual start',
+                          onPressed: () => setState(() => _actualStart = null),
+                          icon: const Icon(Icons.close, size: 18),
+                        ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: PickerField(
+                          label: 'Actual end',
+                          valueLabel: _actualEnd == null
+                              ? ''
+                              : formatDate(_actualEnd!.toIso8601String()),
+                          errorText: _fieldErrors['actualEnd'],
+                          onTap: () async {
+                            final picked = await _pickDate(_actualEnd);
+                            if (picked == null || !mounted) return;
+                            _fieldErrors.set('actualEnd', null);
+                            setState(() => _actualEnd = picked);
+                          },
+                        ),
+                      ),
+                      if (_actualEnd != null)
+                        IconButton(
+                          tooltip: 'Clear actual end',
+                          onPressed: () => setState(() => _actualEnd = null),
+                          icon: const Icon(Icons.close, size: 18),
+                        ),
                     ],
                   ),
                   SwitchListTile(
@@ -507,6 +609,22 @@ class _ProjectFormScreenState extends State<ProjectFormScreen> {
                     ),
                     maxLines: 3,
                   ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Photos, videos and attachments',
+                    style: TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: 8),
+                  if (widget.isEdit && _loaded != null)
+                    MediaListPanel(
+                      entity: _loaded!,
+                      busy: _saving,
+                      onRemove: _removeExistingMedia,
+                    ),
+                  MediaPickerBar(
+                    files: _pendingMedia,
+                    onChanged: (files) => setState(() => _pendingMedia = files),
+                  ),
                   if (widget.isEdit) ...[
                     const SizedBox(height: 12),
                     TextFormField(
@@ -514,13 +632,6 @@ class _ProjectFormScreenState extends State<ProjectFormScreen> {
                       decoration: const InputDecoration(
                         labelText: 'Reason (optional)',
                       ),
-                    ),
-                  ],
-                  if (widget.isEdit) ...[
-                    const SizedBox(height: 16),
-                    MediaPickerBar(
-                      files: _files,
-                      onChanged: (v) => setState(() => _files = v),
                     ),
                   ],
                   const SizedBox(height: 16),
@@ -555,6 +666,19 @@ class _ProjectFormScreenState extends State<ProjectFormScreen> {
   }
 
   Widget _projectCodeBox() {
+    if (widget.isEdit) {
+      return TextFormField(
+        controller: _codeCtrl,
+        decoration: const InputDecoration(
+          labelText: 'Project code *',
+          prefixIcon: Icon(Icons.tag, size: 18),
+        ),
+        textCapitalization: TextCapitalization.characters,
+        validator: (v) =>
+            FormValidators.requiredField(v, 'Project code') ??
+            FormValidators.maxLength(v, 50, 'Project code'),
+      );
+    }
     final code = _displayCode();
     final hasCode = code.isNotEmpty;
     return Column(

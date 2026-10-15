@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/api_helpers.dart';
+import '../../../core/widgets/sort_menu.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../services/pms_services.dart';
@@ -30,6 +31,8 @@ class _TemplatesListScreenState extends State<TemplatesListScreen> {
   List<Map<String, dynamic>> _items = [];
   int _page = 1;
   bool _hasMore = false;
+  String _sortBy = 'createdAt';
+  String _sortOrder = 'desc';
 
   @override
   void initState() {
@@ -70,6 +73,8 @@ class _TemplatesListScreenState extends State<TemplatesListScreen> {
         'page': _page,
         'limit': 20,
         'search': _search,
+        'sortBy': _sortBy,
+        'sortOrder': _sortOrder,
         if (_inactiveOnly) 'inactiveOnly': true,
       });
       if (!mounted) return;
@@ -485,7 +490,28 @@ class _TemplatesListScreenState extends State<TemplatesListScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Templates')),
+      appBar: AppBar(
+        title: const Text('Templates'),
+        actions: [
+          SortMenuButton(
+            choices: const [
+              SortChoice(by: 'createdAt', order: 'desc', label: 'Newest'),
+              SortChoice(by: 'createdAt', order: 'asc', label: 'Oldest'),
+              SortChoice(by: 'name', order: 'asc', label: 'Name A–Z'),
+              SortChoice(by: 'name', order: 'desc', label: 'Name Z–A'),
+            ],
+            sortBy: _sortBy,
+            sortOrder: _sortOrder,
+            onSelected: (by, order) {
+              setState(() {
+                _sortBy = by;
+                _sortOrder = order;
+              });
+              _load(reset: true);
+            },
+          ),
+        ],
+      ),
       floatingActionButton: FloatingActionButton(
         onPressed: () async {
           final created = await context.push<bool>('/pms/templates/new');

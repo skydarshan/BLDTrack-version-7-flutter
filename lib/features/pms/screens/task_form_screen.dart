@@ -8,6 +8,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/form_validation_helpers.dart';
 import '../../../core/utils/form_validators.dart';
 import '../../auth/providers/auth_provider.dart';
+import '../../settings/services/settings_apis.dart';
 import '../services/pms_services.dart';
 import '../utils/pms_constants.dart';
 import '../widgets/media_widgets.dart';
@@ -35,6 +36,8 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
   final _titleCtrl = TextEditingController();
   final _descCtrl = TextEditingController();
   final _reasonCtrl = TextEditingController();
+  final _sequenceCtrl = TextEditingController();
+  final _durationCtrl = TextEditingController();
 
   bool _loading = false;
   bool _saving = false;
@@ -53,11 +56,20 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
   String _coordinatorLabel = '';
   List<String> _memberIds = [];
   List<String> _memberLabels = [];
+  String? _locationId;
+  String _locationLabel = '';
+  String? _contractorId;
+  String _contractorLabel = '';
+  int _approvalSteps = 1;
+  int _loadedApprovalSteps = 1;
+  int _orgApprovalSteps = 0;
 
   List<PendingFile> _files = [];
   List<OptionItem> _projects = const [];
   List<OptionItem> _users = const [];
   List<OptionItem> _parents = const [];
+  List<OptionItem> _locations = const [];
+  List<OptionItem> _contractors = const [];
   final _fieldErrors = FieldErrors();
 
   @override
@@ -72,6 +84,8 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
     _titleCtrl.dispose();
     _descCtrl.dispose();
     _reasonCtrl.dispose();
+    _sequenceCtrl.dispose();
+    _durationCtrl.dispose();
     super.dispose();
   }
 
@@ -79,6 +93,7 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
     setState(() => _loading = true);
     try {
       final api = context.read<PmsServices>();
+      final settings = context.read<SettingsApis>();
       final me = (!widget.isEdit && _projectId == null)
           ? context.read<AuthProvider>().user
           : null;
@@ -100,6 +115,34 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
           .where((o) => o.value.isNotEmpty)
           .toList();
       _users = mapToOptions(users);
+      try {
+        final locations = await settings.locations.listAll({
+          'sortBy': 'location_name',
+          'sortOrder': 'asc',
+        });
+        _locations = mapToOptions(
+          locations,
+          labelOfRow: (row) => row['location_name']?.toString() ?? labelOf(row),
+        );
+      } catch (_) {}
+      try {
+        final contractors = await settings.contractors.listAll({
+          'sortBy': 'name',
+          'sortOrder': 'asc',
+        });
+        _contractors = mapToOptions(contractors);
+      } catch (_) {}
+      try {
+        final org = await settings.getOrganization();
+        final pm = org?['project_management_config'];
+        final taskApproval = pm is Map ? pm['task_approval'] : null;
+        final enabled = taskApproval is Map && taskApproval['enabled'] == true;
+        final steps = enabled && taskApproval['steps'] is num
+            ? (taskApproval['steps'] as num).toInt()
+            : 0;
+        _orgApprovalSteps = steps.clamp(0, 2);
+        if (_orgApprovalSteps >= 1) _approvalSteps = 1;
+      } catch (_) {}
 
       if (_projectId != null) {
         final match = _projects.where((p) => p.value == _projectId);
@@ -139,6 +182,24 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
         }
         _startDate = DateTime.tryParse('${task['start_date'] ?? ''}');
         _dueDate = DateTime.tryParse('${task['due_date'] ?? ''}');
+        _locationId = idOf(task['location']);
+        _locationLabel = labelOf(task['location'], fallback: '');
+        if (_locationLabel == '—') _locationLabel = '';
+        _contractorId = idOf(task['contractor']);
+        _contractorLabel = labelOf(task['contractor'], fallback: '');
+        if (_contractorLabel == '—') _contractorLabel = '';
+        final sequence = task['sequence'];
+        if (sequence != null) _sequenceCtrl.text = sequence.toString();
+        final duration = task['duration_days'];
+        if (duration != null) _durationCtrl.text = duration.toString();
+        final completion = task['completion'];
+        if (completion is Map) {
+          final required = completion['required_steps'];
+          if (required is num && (required == 1 || required == 2)) {
+            _approvalSteps = required.toInt();
+            _loadedApprovalSteps = _approvalSteps;
+          }
+        }
         if (_projectId != null) await _loadParents(_projectId!);
       }
 
@@ -201,6 +262,20 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
   String? _iso(DateTime? d) =>
       d?.toIso8601String().substring(0, 10);
 
+  Map<String, dynamic> _planningFields({required bool includeApproval}) {
+    final sequenceText = _sequenceCtrl.text.trim();
+    final durationText = _durationCtrl.text.trim();
+    final sequence = int.tryParse(sequenceText);
+    final duration = int.tryParse(durationText);
+    return {
+      'location': _locationId,
+      'contractor': _contractorId,
+      if (sequence != null) 'sequence': sequence,
+      'duration_days': durationText.isEmpty ? null : duration,
+      if (includeApproval && _orgApprovalSteps >= 1) 'approval_steps': _approvalSteps,
+    };
+  }
+
   bool _validateForm() {
     _fieldErrors.clear();
     if (!widget.isEdit) {
@@ -234,6 +309,14 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
       'members',
       requiredList(_memberIds, 'At least one assigned member'),
     );
+    final sequenceText = _sequenceCtrl.text.trim();
+    if (sequenceText.isNotEmpty && int.tryParse(sequenceText) == null) {
+      _fieldErrors.set('sequence', 'Sequence must be a whole number');
+    }
+    final durationText = _durationCtrl.text.trim();
+    if (durationText.isNotEmpty && int.tryParse(durationText) == null) {
+      _fieldErrors.set('duration', 'Duration must be a whole number of days');
+    }
     setState(() {});
     return !_fieldErrors.hasErrors;
   }
@@ -270,6 +353,7 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
             'due_date': _iso(_dueDate),
             'coordinator': _coordinatorId,
             'assignedMembers': _memberIds,
+            ..._planningFields(includeApproval: _approvalSteps != _loadedApprovalSteps),
             if (_reasonCtrl.text.trim().isNotEmpty)
               'reason': _reasonCtrl.text.trim(),
           },
@@ -289,6 +373,7 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
             'due_date': _iso(_dueDate),
             'coordinator': _coordinatorId,
             'assignedMembers': _memberIds,
+            ..._planningFields(includeApproval: true),
           },
           files: files,
         );
@@ -517,6 +602,90 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
                           ),
                       ],
                     ),
+                  const SizedBox(height: 12),
+                  PickerField(
+                    label: 'Location',
+                    valueLabel: _locationLabel,
+                    onTap: () async {
+                      final picked = await showOptionPicker(
+                        context,
+                        title: 'Location',
+                        options: [
+                          const OptionItem(value: '', label: 'None'),
+                          ..._locations,
+                        ],
+                        selected: _locationId ?? '',
+                        emptyMessage: 'No locations found',
+                      );
+                      if (picked == null) return;
+                      setState(() {
+                        _locationId = picked.value.isEmpty ? null : picked.value;
+                        _locationLabel = picked.value.isEmpty ? '' : picked.label;
+                      });
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  PickerField(
+                    label: 'Contractor',
+                    valueLabel: _contractorLabel,
+                    onTap: () async {
+                      final picked = await showOptionPicker(
+                        context,
+                        title: 'Contractor',
+                        options: [
+                          const OptionItem(value: '', label: 'None'),
+                          ..._contractors,
+                        ],
+                        selected: _contractorId ?? '',
+                        emptyMessage: 'No contractors found',
+                      );
+                      if (picked == null) return;
+                      setState(() {
+                        _contractorId = picked.value.isEmpty ? null : picked.value;
+                        _contractorLabel = picked.value.isEmpty ? '' : picked.label;
+                      });
+                    },
+                  ),
+                  if (_orgApprovalSteps >= 1) ...[
+                    const SizedBox(height: 12),
+                    AppDropdownFormField<int>(
+                      initialValue: _approvalSteps.clamp(1, _orgApprovalSteps),
+                      decoration: const InputDecoration(labelText: 'Approval steps'),
+                      items: [
+                        const DropdownMenuItem(value: 1, child: Text('1 step')),
+                        if (_orgApprovalSteps >= 2)
+                          const DropdownMenuItem(value: 2, child: Text('2 steps')),
+                      ],
+                      onChanged: (value) {
+                        if (value == null) return;
+                        setState(() => _approvalSteps = value);
+                      },
+                    ),
+                  ] else if (widget.isEdit) ...[
+                    const SizedBox(height: 12),
+                    Text(
+                      'Approval steps: $_loadedApprovalSteps',
+                      style: const TextStyle(color: AppTheme.muted),
+                    ),
+                  ],
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: _sequenceCtrl,
+                    keyboardType: TextInputType.number,
+                    decoration: InputDecoration(
+                      labelText: 'Sequence',
+                      errorText: _fieldErrors['sequence'],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: _durationCtrl,
+                    keyboardType: TextInputType.number,
+                    decoration: InputDecoration(
+                      labelText: 'Duration (days)',
+                      errorText: _fieldErrors['duration'],
+                    ),
+                  ),
                   if (widget.isEdit) ...[
                     const SizedBox(height: 12),
                     TextFormField(
