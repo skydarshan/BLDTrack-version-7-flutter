@@ -1,7 +1,4 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
@@ -22,466 +19,7 @@ import '../../pms/widgets/pickers.dart';
 import '../../pms/widgets/pms_widgets.dart';
 import '../../settings/services/settings_apis.dart';
 
-class ProcurementHomeScreen extends StatefulWidget {
-  const ProcurementHomeScreen({super.key});
-
-  @override
-  State<ProcurementHomeScreen> createState() => _ProcurementHomeScreenState();
-}
-
-class _ProcurementHomeScreenState extends State<ProcurementHomeScreen> {
-  bool _loading = true;
-  String? _error;
-  Map<String, dynamic> _overview = {};
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
-  }
-
-  Future<void> _load() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
-    try {
-      final overview = await context
-          .read<AppServices>()
-          .pms
-          .dashboard
-          .overview();
-      if (!mounted) return;
-      setState(() {
-        _overview = overview;
-        _loading = false;
-      });
-    } on ApiException catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _error = e.message;
-        _loading = false;
-      });
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final remaining = firstMap(_overview, [
-      'remaining_inventory',
-      'remainingInventory',
-    ]);
-    final sites = firstMap(_overview, ['active_sites', 'activeSites']);
-    final pending = firstMap(_overview, [
-      'items_yet_to_receive',
-      'itemsYetToReceive',
-      'itemsYetToBeReceived',
-    ]);
-    final prs = firstMap(_overview, [
-      'total_purchase_requests',
-      'totalPurchaseRequests',
-    ]);
-
-    final pendingPrs =
-        firstNonNull(prs, ['pending_count', 'pendingCount']) ?? 0;
-    final pendingLines = firstNonNull(pending, [
-      'line_items_count',
-      'pendingLineItems',
-      'pending_count',
-      'count',
-    ]);
-
-    var step = 0;
-    Widget enter(Widget child, {bool press = false}) {
-      final body = press ? PressScale(child: child) : child;
-      return EntranceItem(index: step++, child: body);
-    }
-
-    final banner = _error != null
-        ? enter(ErrorBanner(message: _error!, onRetry: _load))
-        : const SizedBox.shrink();
-    final stats = <Widget>[
-      enter(
-        BentoStatCard(
-          expand: true,
-          badgeSize: 44,
-          glyphSize: 24,
-          label: 'Inventory value',
-          value: '${remaining['valueFormatted'] ?? remaining['value'] ?? 0}',
-          icon: Icons.inventory_2_rounded,
-          color: AppTheme.accent,
-        ),
-      ),
-      enter(
-        BentoStatCard(
-          expand: true,
-          badgeSize: 44,
-          glyphSize: 24,
-          label: 'Active sites',
-          value: '${sites['count'] ?? 0}',
-          icon: Icons.place_rounded,
-          color: AppTheme.info,
-        ),
-      ),
-      enter(
-        BentoStatCard(
-          expand: true,
-          badgeSize: 44,
-          glyphSize: 24,
-          label: 'Yet to receive',
-          value: '${pending['valueFormatted'] ?? pending['value'] ?? 0}',
-          hint: pendingLines != null ? '$pendingLines pending lines' : null,
-          icon: Icons.local_shipping_rounded,
-          color: AppTheme.orange,
-          onTap: () => context.go('/dmr/status'),
-        ),
-        press: true,
-      ),
-      enter(
-        BentoStatCard(
-          expand: true,
-          badgeSize: 44,
-          glyphSize: 24,
-          label: 'Purchase requests',
-          value: '${prs['count'] ?? 0}',
-          hint: '$pendingPrs pending',
-          icon: Icons.description_rounded,
-          color: AppTheme.brand,
-          highlight: (pendingPrs is num
-              ? pendingPrs > 0
-              : '$pendingPrs' != '0'),
-          onTap: () => context.go('/procurement/rr'),
-        ),
-        press: true,
-      ),
-    ];
-    final header = enter(
-      const SectionHeader(title: 'Quick actions', color: AppTheme.brand),
-    );
-    final actions = <Widget>[
-      enter(
-        ModernListCard(
-          expand: true,
-          title: 'New requisition',
-          subtitle: 'Raise an RR',
-          icon: Icons.add_box_rounded,
-          color: AppTheme.brand,
-          onTap: () => context.push('/procurement/rr/new'),
-        ),
-        press: true,
-      ),
-      enter(
-        ModernListCard(
-          expand: true,
-          title: 'Approvals',
-          subtitle: 'Review pending PRs',
-          icon: Icons.verified_rounded,
-          color: AppTheme.success,
-          onTap: () => context.go('/procurement/approvals'),
-        ),
-        press: true,
-      ),
-      enter(
-        ModernListCard(
-          expand: true,
-          title: 'Purchase orders',
-          subtitle: 'Open orders',
-          icon: Icons.shopping_bag_rounded,
-          color: AppTheme.info,
-          onTap: () => context.go('/procurement/po'),
-        ),
-        press: true,
-      ),
-    ];
-
-    return Scaffold(
-      extendBody: true,
-      appBar: const ModernAppBar(
-        title: 'Procurement',
-        actions: [
-          PressScale(child: WorkspaceSwitcherButton()),
-          PressScale(child: UserProfileButton()),
-        ],
-      ),
-      body: StaggeredEntrance(
-        active: !_loading,
-        child: RefreshIndicator(
-          onRefresh: _load,
-          child: _loading
-              ? const CenteredScrollLoader()
-              : LayoutBuilder(
-                  builder: (context, constraints) {
-                    final padding = AppTheme.pagePadding;
-                    final innerHeight = constraints.maxHeight.isFinite
-                        ? math.max(
-                            0.0,
-                            constraints.maxHeight - padding.vertical,
-                          )
-                        : 0.0;
-                    final screenH = MediaQuery.sizeOf(context).height;
-                    // Stats take most of the leftover height. Actions stay near
-                    // their natural row size so they do not turn into tall banners.
-                    final statGrowthCap = (screenH * 0.05).clamp(32.0, 56.0);
-                    final actionGrowthCap = (screenH * 0.024).clamp(12.0, 22.0);
-                    return SingleChildScrollView(
-                      physics: const AlwaysScrollableScrollPhysics(),
-                      padding: padding,
-                      child: ConstrainedBox(
-                        constraints: BoxConstraints(minHeight: innerHeight),
-                        child: _ProcurementHomeBalance(
-                          statGap: AppTheme.gridGap,
-                          actionGap: AppTheme.gridGap,
-                          sectionGap: AppTheme.sectionGap,
-                          statGrowthCap: statGrowthCap,
-                          actionGrowthCap: actionGrowthCap,
-                          banner: banner,
-                          stats: stats,
-                          header: header,
-                          actions: actions,
-                        ),
-                      ),
-                    );
-                  },
-                ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Equal-height stat grid, then comfortable equal-height quick actions.
-/// Leftover viewport goes to the stat cards first, then a small amount to
-/// the action cards. Nothing is inserted as an empty spacer.
-class _ProcurementHomeBalance extends MultiChildRenderObjectWidget {
-  _ProcurementHomeBalance({
-    required Widget banner,
-    required List<Widget> stats,
-    required Widget header,
-    required List<Widget> actions,
-    required this.statGap,
-    required this.actionGap,
-    required this.sectionGap,
-    required this.statGrowthCap,
-    required this.actionGrowthCap,
-  }) : assert(stats.length == 4),
-       super(children: [banner, ...stats, header, ...actions]);
-
-  final double statGap;
-  final double actionGap;
-  final double sectionGap;
-  final double statGrowthCap;
-  final double actionGrowthCap;
-
-  @override
-  RenderObject createRenderObject(BuildContext context) {
-    return _RenderProcurementHomeBalance(
-      statGap: statGap,
-      actionGap: actionGap,
-      sectionGap: sectionGap,
-      statGrowthCap: statGrowthCap,
-      actionGrowthCap: actionGrowthCap,
-    );
-  }
-
-  @override
-  void updateRenderObject(
-    BuildContext context,
-    _RenderProcurementHomeBalance renderObject,
-  ) {
-    renderObject
-      ..statGap = statGap
-      ..actionGap = actionGap
-      ..sectionGap = sectionGap
-      ..statGrowthCap = statGrowthCap
-      ..actionGrowthCap = actionGrowthCap;
-  }
-}
-
-class _HomeParentData extends ContainerBoxParentData<RenderBox> {}
-
-class _RenderProcurementHomeBalance extends RenderBox
-    with
-        ContainerRenderObjectMixin<RenderBox, _HomeParentData>,
-        RenderBoxContainerDefaultsMixin<RenderBox, _HomeParentData> {
-  _RenderProcurementHomeBalance({
-    required double statGap,
-    required double actionGap,
-    required double sectionGap,
-    required double statGrowthCap,
-    required double actionGrowthCap,
-  }) : _statGap = statGap,
-       _actionGap = actionGap,
-       _sectionGap = sectionGap,
-       _statGrowthCap = statGrowthCap,
-       _actionGrowthCap = actionGrowthCap;
-
-  double _statGap;
-  double _actionGap;
-  double _sectionGap;
-  double _statGrowthCap;
-  double _actionGrowthCap;
-
-  double get statGap => _statGap;
-  set statGap(double value) {
-    if (_statGap == value) return;
-    _statGap = value;
-    markNeedsLayout();
-  }
-
-  double get actionGap => _actionGap;
-  set actionGap(double value) {
-    if (_actionGap == value) return;
-    _actionGap = value;
-    markNeedsLayout();
-  }
-
-  double get sectionGap => _sectionGap;
-  set sectionGap(double value) {
-    if (_sectionGap == value) return;
-    _sectionGap = value;
-    markNeedsLayout();
-  }
-
-  double get statGrowthCap => _statGrowthCap;
-  set statGrowthCap(double value) {
-    if (_statGrowthCap == value) return;
-    _statGrowthCap = value;
-    markNeedsLayout();
-  }
-
-  double get actionGrowthCap => _actionGrowthCap;
-  set actionGrowthCap(double value) {
-    if (_actionGrowthCap == value) return;
-    _actionGrowthCap = value;
-    markNeedsLayout();
-  }
-
-  @override
-  void setupParentData(RenderBox child) {
-    if (child.parentData is! _HomeParentData) {
-      child.parentData = _HomeParentData();
-    }
-  }
-
-  void _place(RenderBox box, Offset offset) {
-    (box.parentData! as _HomeParentData).offset = offset;
-  }
-
-  @override
-  void performLayout() {
-    final width = constraints.hasBoundedWidth ? constraints.maxWidth : 0.0;
-    final target = constraints.minHeight.isFinite ? constraints.minHeight : 0.0;
-    final banner = firstChild;
-    if (banner == null || width <= 0) {
-      size = constraints.constrain(Size(width, target));
-      return;
-    }
-
-    final stats = <RenderBox>[];
-    var cursor = childAfter(banner);
-    for (var i = 0; i < 4 && cursor != null; i++) {
-      stats.add(cursor);
-      cursor = childAfter(cursor);
-    }
-    final header = cursor;
-    final actions = <RenderBox>[];
-    cursor = header == null ? null : childAfter(header);
-    while (cursor != null) {
-      actions.add(cursor);
-      cursor = childAfter(cursor);
-    }
-
-    banner.layout(BoxConstraints(maxWidth: width), parentUsesSize: true);
-
-    final statWidth = math.max(0.0, (width - statGap) / 2);
-    var naturalStat = 0.0;
-    for (final card in stats) {
-      card.layout(BoxConstraints(maxWidth: statWidth), parentUsesSize: true);
-      naturalStat = math.max(naturalStat, card.size.height);
-    }
-
-    if (header != null) {
-      header.layout(BoxConstraints(maxWidth: width), parentUsesSize: true);
-    }
-
-    var naturalAction = 0.0;
-    for (final card in actions) {
-      card.layout(BoxConstraints(maxWidth: width), parentUsesSize: true);
-      naturalAction = math.max(naturalAction, card.size.height);
-    }
-
-    final headerHeight = header?.size.height ?? 0.0;
-    final actionGaps = actions.isEmpty ? 0.0 : actionGap * (actions.length - 1);
-    final fixed =
-        banner.size.height + statGap + sectionGap + headerHeight + actionGaps;
-    final base = fixed + (2 * naturalStat) + (actions.length * naturalAction);
-    final extra = math.max(0.0, target - base);
-
-    var statAdd = math.min(statGrowthCap, stats.isEmpty ? 0.0 : extra / 2);
-    var used = statAdd * 2;
-    var actionAdd = 0.0;
-    if (actions.isNotEmpty) {
-      actionAdd = math.min(actionGrowthCap, (extra - used) / actions.length);
-      used += actionAdd * actions.length;
-    }
-    final statRoom = (statGrowthCap - statAdd) * 2;
-    if (statRoom > 0 && extra > used) {
-      statAdd += math.min(statGrowthCap - statAdd, (extra - used) / 2);
-    }
-
-    final statHeight = naturalStat + statAdd;
-    final actionHeight = naturalAction + actionAdd;
-    final statConstraints = BoxConstraints.tightFor(
-      width: statWidth,
-      height: statHeight,
-    );
-    for (final card in stats) {
-      card.layout(statConstraints, parentUsesSize: true);
-    }
-    final actionConstraints = BoxConstraints.tightFor(
-      width: width,
-      height: actionHeight,
-    );
-    for (final card in actions) {
-      card.layout(actionConstraints, parentUsesSize: true);
-    }
-
-    var y = 0.0;
-    _place(banner, Offset.zero);
-    y += banner.size.height;
-
-    final xRight = statWidth + statGap;
-    if (stats.length == 4) {
-      _place(stats[0], Offset(0, y));
-      _place(stats[1], Offset(xRight, y));
-      y += statHeight + statGap;
-      _place(stats[2], Offset(0, y));
-      _place(stats[3], Offset(xRight, y));
-      y += statHeight + sectionGap;
-    }
-    if (header != null) {
-      _place(header, Offset(0, y));
-      y += headerHeight;
-    }
-    for (var i = 0; i < actions.length; i++) {
-      _place(actions[i], Offset(0, y));
-      y += actionHeight;
-      if (i != actions.length - 1) y += actionGap;
-    }
-
-    size = constraints.constrain(Size(width, math.max(target, y)));
-  }
-
-  @override
-  void paint(PaintingContext context, Offset offset) {
-    defaultPaint(context, offset);
-  }
-
-  @override
-  bool hitTestChildren(BoxHitTestResult result, {required Offset position}) {
-    return defaultHitTestChildren(result, position: position);
-  }
-}
+export 'procurement_home_screen.dart';
 
 class _RrRowActions extends StatelessWidget {
   const _RrRowActions({required this.status, required this.onDelete});
@@ -557,6 +95,7 @@ class _RrListScreenState extends State<RrListScreen> {
   List<Map<String, dynamic>> _sites = [];
   List<Map<String, dynamic>> _catalogItems = [];
   int _page = 1;
+  int _motion = 0;
   bool _loading = true;
   String? _error;
   List<Map<String, dynamic>> _items = [];
@@ -759,6 +298,7 @@ class _RrListScreenState extends State<RrListScreen> {
         _pagination = list.pagination;
         _counts = results[1] as Map<String, dynamic>;
         _loading = false;
+        _motion += 1;
       });
     } on ApiException catch (e) {
       if (!mounted) return;
@@ -782,187 +322,260 @@ class _RrListScreenState extends State<RrListScreen> {
         : _counts;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Requisitions'),
-        actions: const [WorkspaceSwitcherButton()],
+        title: const StaggeredEntrance(
+          maxIndex: 0,
+          slide: 12,
+          child: EntranceItem(index: 0, child: Text('Requisitions')),
+        ),
+        actions: const [PressScale(child: WorkspaceSwitcherButton())],
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () async {
-          final created = await context.push<bool>('/procurement/rr/new');
-          if (created == true && mounted) _load();
-        },
-        child: const Icon(Icons.add),
+      floatingActionButton: PressScale(
+        child: FloatingActionButton(
+          onPressed: () async {
+            final created = await context.push<bool>('/procurement/rr/new');
+            if (created == true && mounted) _load();
+          },
+          child: const Icon(Icons.add),
+        ),
       ),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Padding(
-            padding: AppTheme.searchPadding,
-            child: TextField(
-              decoration: const InputDecoration(
-                hintText: 'Search PR number, title or site…',
-                prefixIcon: Icon(Icons.search),
-              ),
-              onSubmitted: (v) {
-                setState(() {
-                  _search = v.trim();
-                  _page = 1;
-                });
-                _load();
-              },
-            ),
-          ),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-            child: Row(
+          StaggeredEntrance(
+            maxIndex: 2,
+            slide: 18,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                ActionChip(
-                  avatar: const Icon(Icons.location_on_outlined, size: 18),
-                  label: Text(_siteId == null ? 'All sites' : _siteLabel),
-                  onPressed: _pickSite,
-                ),
-                const SizedBox(width: 8),
-                ActionChip(
-                  avatar: const Icon(Icons.date_range_outlined, size: 18),
-                  label: Text(_dateLabel),
-                  onPressed: _pickDates,
-                ),
-                const SizedBox(width: 8),
-                ActionChip(
-                  avatar: const Icon(Icons.category_outlined, size: 18),
-                  label: Text(_prType ?? 'PR type'),
-                  onPressed: _pickPrType,
-                ),
-                const SizedBox(width: 8),
-                ActionChip(
-                  avatar: const Icon(Icons.inventory_2_outlined, size: 18),
-                  label: Text(_itemId == null ? 'Item' : _itemLabel),
-                  onPressed: _pickItem,
-                ),
-                const SizedBox(width: 8),
-                ActionChip(
-                  avatar: const Icon(Icons.sort, size: 18),
-                  label: Text(_sortLabel),
-                  onPressed: _pickSort,
-                ),
-              ],
-            ),
-          ),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            padding: AppTheme.chipRowPadding,
-            child: Row(
-              children: [
-                for (final t in [
-                  'all',
-                  'draft',
-                  'pending',
-                  'revise',
-                  'approved',
-                  'revised',
-                  'rejected',
-                ])
-                  Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: ChoiceChip(
-                      label: Text(
-                        t == 'all'
-                            ? 'All (${_counts['total'] ?? ''})'
-                            : '$t (${counts[t] ?? ''})',
+                EntranceItem(
+                  index: 0,
+                  child: Padding(
+                    padding: AppTheme.searchPadding,
+                    child: TextField(
+                      decoration: const InputDecoration(
+                        hintText: 'Search PR number, title or site…',
+                        prefixIcon: Icon(Icons.search),
                       ),
-                      selected: _tab == t,
-                      onSelected: (_) {
+                      onSubmitted: (v) {
                         setState(() {
-                          _tab = t;
+                          _search = v.trim();
                           _page = 1;
                         });
                         _load();
                       },
                     ),
                   ),
+                ),
+                EntranceItem(
+                  index: 1,
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                    child: Row(
+                      children: [
+                        PressScale(
+                          child: ActionChip(
+                            avatar: const Icon(
+                              Icons.location_on_outlined,
+                              size: 18,
+                            ),
+                            label: Text(
+                              _siteId == null ? 'All sites' : _siteLabel,
+                            ),
+                            onPressed: _pickSite,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        PressScale(
+                          child: ActionChip(
+                            avatar: const Icon(
+                              Icons.date_range_outlined,
+                              size: 18,
+                            ),
+                            label: Text(_dateLabel),
+                            onPressed: _pickDates,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        PressScale(
+                          child: ActionChip(
+                            avatar: const Icon(
+                              Icons.category_outlined,
+                              size: 18,
+                            ),
+                            label: Text(_prType ?? 'PR type'),
+                            onPressed: _pickPrType,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        PressScale(
+                          child: ActionChip(
+                            avatar: const Icon(
+                              Icons.inventory_2_outlined,
+                              size: 18,
+                            ),
+                            label: Text(_itemId == null ? 'Item' : _itemLabel),
+                            onPressed: _pickItem,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        PressScale(
+                          child: ActionChip(
+                            avatar: const Icon(Icons.sort, size: 18),
+                            label: Text(_sortLabel),
+                            onPressed: _pickSort,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                EntranceItem(
+                  index: 2,
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    padding: AppTheme.chipRowPadding,
+                    child: Row(
+                      children: [
+                        for (final t in [
+                          'all',
+                          'draft',
+                          'pending',
+                          'revise',
+                          'approved',
+                          'revised',
+                          'rejected',
+                        ])
+                          Padding(
+                            padding: const EdgeInsets.only(right: 8),
+                            child: PressScale(
+                              child: ChoiceChip(
+                                label: Text(
+                                  t == 'all'
+                                      ? 'All (${_counts['total'] ?? ''})'
+                                      : '$t (${counts[t] ?? ''})',
+                                ),
+                                selected: _tab == t,
+                                onSelected: (_) {
+                                  setState(() {
+                                    _tab = t;
+                                    _page = 1;
+                                  });
+                                  _load();
+                                },
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
               ],
             ),
           ),
           if (_error != null)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: ErrorBanner(message: _error!, onRetry: _load),
+              child: SoftAppear(
+                child: ErrorBanner(message: _error!, onRetry: _load),
+              ),
             ),
           Expanded(
-            child: RefreshIndicator(
-              onRefresh: _load,
-              child: _loading
-                  ? const CenteredScrollLoader()
-                  : _items.isEmpty
-                  ? EmptyListBody(
-                      message: listEmptyMessage(
-                        noun: 'requisitions',
-                        search: _search,
-                        filterLabel: [
-                          if (_tab != 'all') _tab,
-                          if (_siteId != null) 'selected site',
-                          if (_prType != null) _prType,
-                          if (_itemId != null) 'selected item',
-                          if (_dateFrom != null || _dateTo != null)
-                            'date range',
-                        ].whereType<String>().join(', '),
-                      ),
-                    )
-                  : ListView.separated(
-                      padding: AppTheme.listPadding,
-                      itemCount: _items.length + 1,
-                      separatorBuilder: (_, _) => const SizedBox(height: 8),
-                      itemBuilder: (context, i) {
-                        if (i == _items.length) {
-                          final pages = paginationTotalPages(_pagination);
-                          return ListPaginationRow(
-                            page: _page,
-                            totalPages: pages,
-                            onPrev: _page > 1
-                                ? () {
-                                    setState(() => _page -= 1);
-                                    _load();
-                                  }
-                                : null,
-                            onNext: _page < pages
-                                ? () {
-                                    setState(() => _page += 1);
-                                    _load();
-                                  }
-                                : null,
-                          );
-                        }
-                        final row = _items[i];
-                        final id = idOf(row);
-                        final number =
-                            row['requisition_request_number']
-                                ?.toString()
-                                .trim() ??
-                            '';
-                        final title = row['title']?.toString().trim() ?? '';
-                        final headline = [
-                          if (number.isNotEmpty) number,
-                          if (title.isNotEmpty) title,
-                        ].join(' · ');
-                        final site = siteNameOf(row);
-                        final status = row['status']?.toString();
-                        return Card(
-                          child: ListTile(
-                            title: Text(headline.isEmpty ? 'RR' : headline),
-                            subtitle: Text(site.isEmpty ? 'Requisition' : site),
-                            trailing: _RrRowActions(
-                              status: status,
-                              onDelete: id == null
-                                  ? null
-                                  : () => _deleteRequisition(id),
-                            ),
-                            onTap: id == null
-                                ? null
-                                : () => context.push('/procurement/rr/$id'),
+            child: StaggeredEntrance(
+              active: !_loading,
+              replayToken: _motion,
+              child: RefreshIndicator(
+                onRefresh: _load,
+                child: _loading
+                    ? const CenteredScrollLoader()
+                    : _items.isEmpty
+                    ? EntranceItem(
+                        index: 0,
+                        child: EmptyListBody(
+                          message: listEmptyMessage(
+                            noun: 'requisitions',
+                            search: _search,
+                            filterLabel: [
+                              if (_tab != 'all') _tab,
+                              if (_siteId != null) 'selected site',
+                              if (_prType != null) _prType,
+                              if (_itemId != null) 'selected item',
+                              if (_dateFrom != null || _dateTo != null)
+                                'date range',
+                            ].whereType<String>().join(', '),
                           ),
-                        );
-                      },
-                    ),
+                        ),
+                      )
+                    : ListView.separated(
+                        padding: AppTheme.listPadding,
+                        itemCount: _items.length + 1,
+                        separatorBuilder: (_, _) => const SizedBox(height: 8),
+                        itemBuilder: (context, i) {
+                          if (i == _items.length) {
+                            final pages = paginationTotalPages(_pagination);
+                            return EntranceItem(
+                              index: 6,
+                              child: ListPaginationRow(
+                                page: _page,
+                                totalPages: pages,
+                                onPrev: _page > 1
+                                    ? () {
+                                        setState(() => _page -= 1);
+                                        _load();
+                                      }
+                                    : null,
+                                onNext: _page < pages
+                                    ? () {
+                                        setState(() => _page += 1);
+                                        _load();
+                                      }
+                                    : null,
+                              ),
+                            );
+                          }
+                          final row = _items[i];
+                          final id = idOf(row);
+                          final number =
+                              row['requisition_request_number']
+                                  ?.toString()
+                                  .trim() ??
+                              '';
+                          final title = row['title']?.toString().trim() ?? '';
+                          final headline = [
+                            if (number.isNotEmpty) number,
+                            if (title.isNotEmpty) title,
+                          ].join(' · ');
+                          final site = siteNameOf(row);
+                          final status = row['status']?.toString();
+                          return EntranceItem(
+                            index: i,
+                            child: PressScale(
+                              enabled: id != null,
+                              child: Card(
+                                child: ListTile(
+                                  title: Text(
+                                    headline.isEmpty ? 'RR' : headline,
+                                  ),
+                                  subtitle: Text(
+                                    site.isEmpty ? 'Requisition' : site,
+                                  ),
+                                  trailing: _RrRowActions(
+                                    status: status,
+                                    onDelete: id == null
+                                        ? null
+                                        : () => _deleteRequisition(id),
+                                  ),
+                                  onTap: id == null
+                                      ? null
+                                      : () =>
+                                            context.push('/procurement/rr/$id'),
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+              ),
             ),
           ),
         ],
@@ -2534,85 +2147,118 @@ class _RrApprovalsScreenState extends State<RrApprovalsScreen> {
   Widget build(BuildContext context) {
     final visible = _items.where(_matches).toList();
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('RR Approvals'),
-        actions: const [WorkspaceSwitcherButton()],
+      extendBody: true,
+      appBar: const ModernAppBar(
+        title: 'RR Approvals',
+        actions: [PressScale(child: WorkspaceSwitcherButton())],
       ),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Padding(
-            padding: AppTheme.filterPadding,
-            child: SegmentedButton<int>(
-              segments: const [
-                ButtonSegment(value: 1, label: Text('Step 1')),
-                ButtonSegment(value: 2, label: Text('Step 2')),
+          StaggeredEntrance(
+            active: !_loading,
+            maxIndex: 1,
+            slide: 28,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                EntranceItem(
+                  index: 0,
+                  child: Padding(
+                    padding: AppTheme.filterPadding,
+                    child: PressScale(
+                      child: SegmentedButton<int>(
+                        segments: const [
+                          ButtonSegment(value: 1, label: Text('Step 1')),
+                          ButtonSegment(value: 2, label: Text('Step 2')),
+                        ],
+                        selected: {_step},
+                        onSelectionChanged: (s) {
+                          setState(() => _step = s.first);
+                          _load();
+                        },
+                      ),
+                    ),
+                  ),
+                ),
+                EntranceItem(
+                  index: 1,
+                  child: Padding(
+                    padding: AppTheme.searchPadding,
+                    child: TextField(
+                      decoration: const InputDecoration(
+                        hintText: 'Search number, title or site…',
+                        prefixIcon: Icon(Icons.search),
+                      ),
+                      onChanged: (v) => setState(() => _search = v.trim()),
+                    ),
+                  ),
+                ),
               ],
-              selected: {_step},
-              onSelectionChanged: (s) {
-                setState(() => _step = s.first);
-                _load();
-              },
-            ),
-          ),
-          Padding(
-            padding: AppTheme.searchPadding,
-            child: TextField(
-              decoration: const InputDecoration(
-                hintText: 'Search number, title or site…',
-                prefixIcon: Icon(Icons.search),
-              ),
-              onChanged: (v) => setState(() => _search = v.trim()),
             ),
           ),
           if (_error != null)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: ErrorBanner(message: _error!, onRetry: _load),
+              child: SoftAppear(
+                child: ErrorBanner(message: _error!, onRetry: _load),
+              ),
             ),
           Expanded(
-            child: RefreshIndicator(
-              onRefresh: _load,
-              child: _loading
-                  ? const CenteredScrollLoader()
-                  : visible.isEmpty
-                  ? EmptyListBody(
-                      message: listEmptyMessage(
-                        noun: 'pending approvals',
-                        search: _search,
-                      ),
-                    )
-                  : ListView.separated(
-                      padding: AppTheme.formPadding,
-                      itemCount: visible.length,
-                      separatorBuilder: (_, _) => const SizedBox(height: 8),
-                      itemBuilder: (context, i) {
-                        final row = visible[i];
-                        final id = idOf(row);
-                        final status = row['status']?.toString();
-                        return Card(
-                          child: ListTile(
-                            title: Text(row['title']?.toString() ?? 'RR'),
-                            subtitle: Text(
-                              '${row['requisition_request_number'] ?? ''}',
-                            ),
-                            trailing: _RrRowActions(
-                              status: status,
-                              onDelete:
-                                  id == null ||
-                                      !(status == 'draft' ||
-                                          status == 'revise' ||
-                                          status == 'rejected')
-                                  ? null
-                                  : () => _deleteRequisition(id),
-                            ),
-                            onTap: id == null
-                                ? null
-                                : () => context.push('/procurement/rr/$id'),
+            child: StaggeredEntrance(
+              active: !_loading,
+              replayToken: _step,
+              child: RefreshIndicator(
+                onRefresh: _load,
+                child: _loading
+                    ? const CenteredScrollLoader()
+                    : visible.isEmpty
+                    ? EntranceItem(
+                        index: 0,
+                        child: EmptyListBody(
+                          message: listEmptyMessage(
+                            noun: 'pending approvals',
+                            search: _search,
                           ),
-                        );
-                      },
-                    ),
+                        ),
+                      )
+                    : ListView.separated(
+                        padding: AppTheme.formPadding,
+                        itemCount: visible.length,
+                        separatorBuilder: (_, _) => const SizedBox(height: 8),
+                        itemBuilder: (context, i) {
+                          final row = visible[i];
+                          final id = idOf(row);
+                          final status = row['status']?.toString();
+                          return EntranceItem(
+                            index: i,
+                            child: PressScale(
+                              child: Card(
+                                child: ListTile(
+                                  title: Text(row['title']?.toString() ?? 'RR'),
+                                  subtitle: Text(
+                                    '${row['requisition_request_number'] ?? ''}',
+                                  ),
+                                  trailing: _RrRowActions(
+                                    status: status,
+                                    onDelete:
+                                        id == null ||
+                                            !(status == 'draft' ||
+                                                status == 'revise' ||
+                                                status == 'rejected')
+                                        ? null
+                                        : () => _deleteRequisition(id),
+                                  ),
+                                  onTap: id == null
+                                      ? null
+                                      : () => context.push('/procurement/rr/$id'),
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+              ),
             ),
           ),
         ],

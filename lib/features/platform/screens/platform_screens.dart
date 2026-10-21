@@ -56,8 +56,32 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     final entityId = idOf(
       row['entityId'] ?? (row['metadata'] is Map ? row['metadata']['entityId'] : null),
     );
+    final type = row['type']?.toString();
+    final entityIdEarly = idOf(
+      row['entityId'] ?? (row['metadata'] is Map ? row['metadata']['entityId'] : null),
+    );
+    switch (type) {
+      case 'dpr_pending_approval':
+        context.push(
+          entityIdEarly == null
+              ? '/pms/dpr/approvals'
+              : '/pms/dpr/approvals?open=$entityIdEarly',
+        );
+        return;
+      case 'dpr_revised':
+      case 'dpr_approved':
+        context.push(entityIdEarly == null ? '/pms/dpr' : '/pms/dpr/$entityIdEarly');
+        return;
+      case 'dpr_missing':
+        context.push('/pms/dpr?tab=missing');
+        return;
+    }
     if (entityId == null) return;
     switch (entityType) {
+      case 'dpr':
+      case 'daily_progress_report':
+      case 'dailyProgressReport':
+        context.push('/pms/dpr/$entityId');
       case 'task':
         context.push('/pms/tasks/$entityId');
       case 'project':

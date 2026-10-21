@@ -44,6 +44,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
   int _taskSteps = 0;
   String _taskStep1 = '';
   String _taskStep2 = '';
+  int _dprSteps = 0;
+  String _dprStep1 = '';
+  String _dprStep2 = '';
   String? _stepError;
   String? _subdomain;
 
@@ -165,6 +168,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
         _showError(task);
         return false;
       }
+      final dpr = _validateApproval('DPR approval', _dprSteps, _dprStep1, _dprStep2);
+      if (dpr != null) {
+        _showError(dpr);
+        return false;
+      }
     }
     return true;
   }
@@ -247,7 +255,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
       projectManagementConfig: _pmOn
           ? {
               'task_approval': buildApprovalPayload(_taskSteps, _taskStep1, _taskStep2),
-              'dpr_approval': buildApprovalPayload(0, '', ''),
+              'dpr_approval': buildApprovalPayload(_dprSteps, _dprStep1, _dprStep2),
             }
           : null,
     );
@@ -380,6 +388,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 taskSteps: _taskSteps,
                 taskStep1: _taskStep1,
                 taskStep2: _taskStep2,
+                dprSteps: _dprSteps,
+                dprStep1: _dprStep1,
+                dprStep2: _dprStep2,
                 onModulesChanged: (next) => setState(() => _modules = next),
                 onApprovalChanged: ({
                   int? rrSteps,
@@ -391,6 +402,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   int? taskSteps,
                   String? taskStep1,
                   String? taskStep2,
+                  int? dprSteps,
+                  String? dprStep1,
+                  String? dprStep2,
                 }) {
                   setState(() {
                     if (rrSteps != null) _rrSteps = rrSteps;
@@ -402,6 +416,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     if (taskSteps != null) _taskSteps = taskSteps;
                     if (taskStep1 != null) _taskStep1 = taskStep1;
                     if (taskStep2 != null) _taskStep2 = taskStep2;
+                    if (dprSteps != null) _dprSteps = dprSteps;
+                    if (dprStep1 != null) _dprStep1 = dprStep1;
+                    if (dprStep2 != null) _dprStep2 = dprStep2;
                   });
                 },
               ),

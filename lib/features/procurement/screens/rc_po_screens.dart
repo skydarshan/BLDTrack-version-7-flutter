@@ -6,6 +6,8 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/network/api_helpers.dart';
 import '../../../core/widgets/sort_menu.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/theme/modern_widgets.dart';
+import '../../../core/widgets/motion.dart';
 import '../../../core/utils/list_query.dart';
 import '../../../core/utils/share_bytes.dart';
 import '../../app/app_services.dart';
@@ -1082,64 +1084,101 @@ class _RateApprovalsScreenState extends State<RateApprovalsScreen> {
   Widget build(BuildContext context) {
     final visible = _items.where(_matches).toList();
     return Scaffold(
-      appBar: AppBar(title: const Text('Rate approvals')),
+      extendBody: true,
+      appBar: const ModernAppBar(title: 'Rate approvals'),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Padding(
-            padding: AppTheme.filterPadding,
-            child: SegmentedButton<int>(
-              segments: const [
-                ButtonSegment(value: 1, label: Text('Step 1')),
-                ButtonSegment(value: 2, label: Text('Step 2')),
+          StaggeredEntrance(
+            active: !_loading,
+            maxIndex: 1,
+            slide: 28,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                EntranceItem(
+                  index: 0,
+                  child: Padding(
+                    padding: AppTheme.filterPadding,
+                    child: PressScale(
+                      child: SegmentedButton<int>(
+                        segments: const [
+                          ButtonSegment(value: 1, label: Text('Step 1')),
+                          ButtonSegment(value: 2, label: Text('Step 2')),
+                        ],
+                        selected: {_step},
+                        onSelectionChanged: (s) {
+                          setState(() => _step = s.first);
+                          _load();
+                        },
+                      ),
+                    ),
+                  ),
+                ),
+                EntranceItem(
+                  index: 1,
+                  child: Padding(
+                    padding: AppTheme.searchPadding,
+                    child: TextField(
+                      decoration: const InputDecoration(
+                        hintText: 'Search number, remarks or site…',
+                        prefixIcon: Icon(Icons.search),
+                      ),
+                      onChanged: (v) => setState(() => _search = v.trim()),
+                    ),
+                  ),
+                ),
               ],
-              selected: {_step},
-              onSelectionChanged: (s) {
-                setState(() => _step = s.first);
-                _load();
-              },
-            ),
-          ),
-          Padding(
-            padding: AppTheme.searchPadding,
-            child: TextField(
-              decoration: const InputDecoration(
-                hintText: 'Search number, remarks or site…',
-                prefixIcon: Icon(Icons.search),
-              ),
-              onChanged: (v) => setState(() => _search = v.trim()),
             ),
           ),
           if (_error != null)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: ErrorBanner(message: _error!, onRetry: _load),
+              child: SoftAppear(
+                child: ErrorBanner(message: _error!, onRetry: _load),
+              ),
             ),
           Expanded(
-            child: _loading
-                ? const Center(child: CircularProgressIndicator())
-                : visible.isEmpty
-                    ? EmptyState(
+            child: StaggeredEntrance(
+              active: !_loading,
+              replayToken: _step,
+              child: _loading
+                  ? const Center(child: CircularProgressIndicator())
+                  : visible.isEmpty
+                  ? EntranceItem(
+                      index: 0,
+                      child: EmptyState(
                         message: _search.trim().isEmpty
                             ? 'No pending rate approvals'
                             : 'No rate approvals match this search',
-                      )
-                    : ListView.separated(
-                        padding: AppTheme.formPadding,
-                        itemCount: visible.length,
-                        separatorBuilder: (_, _) => const SizedBox(height: 8),
-                        itemBuilder: (context, i) {
-                          final row = visible[i];
-                          return Card(
-                            child: ListTile(
-                              title: Text(rcHeadline(row)),
-                              subtitle: Text(rcSubtitle(row)),
-                              trailing: ListDeleteMenu(onDelete: () => _deleteRate(row)),
-                              onTap: () => context.push('/procurement/rc/${idOf(row)}'),
-                            ),
-                          );
-                        },
                       ),
+                    )
+                  : ListView.separated(
+                      padding: AppTheme.formPadding,
+                      itemCount: visible.length,
+                      separatorBuilder: (_, _) => const SizedBox(height: 8),
+                      itemBuilder: (context, i) {
+                        final row = visible[i];
+                        return EntranceItem(
+                          index: i,
+                          child: PressScale(
+                            child: Card(
+                              child: ListTile(
+                                title: Text(rcHeadline(row)),
+                                subtitle: Text(rcSubtitle(row)),
+                                trailing: ListDeleteMenu(
+                                  onDelete: () => _deleteRate(row),
+                                ),
+                                onTap: () => context.push(
+                                  '/procurement/rc/${idOf(row)}',
+                                ),
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+            ),
           ),
         ],
       ),
@@ -1168,6 +1207,7 @@ class _PoListScreenState extends State<PoListScreen> {
   int _page = 1;
   String _sortBy = 'createdOn';
   String _sortOrder = 'desc';
+  int _motion = 0;
   final List<String> _selected = [];
 
   bool _canMergeStatus(String? status) =>
@@ -1229,6 +1269,7 @@ class _PoListScreenState extends State<PoListScreen> {
         _items = res.items;
         _pagination = res.pagination;
         _loading = false;
+        _motion += 1;
       });
     } on ApiException catch (e) {
       if (!mounted) return;
@@ -1286,218 +1327,277 @@ class _PoListScreenState extends State<PoListScreen> {
   Widget build(BuildContext context) {
     final pages = paginationTotalPages(_pagination);
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Purchase orders'),
+      extendBody: true,
+      appBar: ModernAppBar(
+        title: 'Purchase orders',
+        animateTitle: true,
         actions: [
-          SortMenuButton(
-            choices: const [
-              SortChoice(by: 'createdOn', order: 'desc', label: 'Newest'),
-              SortChoice(by: 'createdOn', order: 'asc', label: 'Oldest'),
-              SortChoice(by: 'po_number', order: 'asc', label: 'PO number'),
-              SortChoice(by: 'vendor', order: 'asc', label: 'Vendor'),
-            ],
-            sortBy: _sortBy,
-            sortOrder: _sortOrder,
-            onSelected: (by, order) {
-              setState(() {
-                _sortBy = by;
-                _sortOrder = order;
-                _page = 1;
-              });
-              _load();
-            },
-          ),
-          const WorkspaceSwitcherButton(),
-        ],
-      ),
-      body: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Padding(
-            padding: AppTheme.searchPadding,
-            child: TextField(
-              decoration: const InputDecoration(
-                hintText: 'Search PO, site, vendor, item…',
-                prefixIcon: Icon(Icons.search),
-              ),
-              onSubmitted: (v) {
+          PressScale(
+            child: SortMenuButton(
+              choices: const [
+                SortChoice(by: 'createdOn', order: 'desc', label: 'Newest'),
+                SortChoice(by: 'createdOn', order: 'asc', label: 'Oldest'),
+                SortChoice(by: 'po_number', order: 'asc', label: 'PO number'),
+                SortChoice(by: 'vendor', order: 'asc', label: 'Vendor'),
+              ],
+              sortBy: _sortBy,
+              sortOrder: _sortOrder,
+              onSelected: (by, order) {
                 setState(() {
-                  _search = v.trim();
+                  _sortBy = by;
+                  _sortOrder = order;
                   _page = 1;
                 });
                 _load();
               },
             ),
           ),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-            child: Row(
+          const PressScale(child: WorkspaceSwitcherButton()),
+        ],
+      ),
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          StaggeredEntrance(
+            maxIndex: 2,
+            slide: 18,
+            itemMs: 380,
+            stepMs: 46,
+            scaleFrom: 0.98,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                ActionChip(
-                  avatar: const Icon(Icons.location_on_outlined, size: 18),
-                  label: Text(_siteId == null ? 'All sites' : _siteLabel),
-                  onPressed: _pickSite,
-                ),
-                const SizedBox(width: 8),
-                OutlinedButton(
-                  style: _compactButton,
-                  onPressed: _confirmMerge,
-                  child: Text(_merging ? 'Merge (${_selected.length})' : 'Merge orders'),
-                ),
-                if (_merging)
-                  TextButton(
-                    style: TextButton.styleFrom(
-                      minimumSize: const Size(0, 34),
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      visualDensity: VisualDensity.compact,
-                    ),
-                    onPressed: () => setState(() {
-                      _merging = false;
-                      _selected.clear();
-                    }),
-                    child: const Text('Cancel'),
-                  ),
-              ],
-            ),
-          ),
-          if (_merging)
-            const Padding(
-              padding: EdgeInsets.fromLTRB(16, 0, 16, 8),
-              child: Text(
-                'Select pending, approved, or revised orders. Only one approved or revised order can be included.',
-                style: TextStyle(color: AppTheme.muted, fontSize: 12),
-              ),
-            ),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            padding: AppTheme.chipRowPadding,
-            child: Row(
-              children: [
-                for (final s in ['', 'pending', 'approval_pending', 'approved', 'rejected', 'revised'])
-                  Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: ChoiceChip(
-                      label: Text(s.isEmpty ? 'All' : s),
-                      selected: _status == s,
-                      onSelected: (_) {
+                EntranceItem(
+                  index: 0,
+                  child: Padding(
+                    padding: AppTheme.searchPadding,
+                    child: TextField(
+                      decoration: const InputDecoration(
+                        hintText: 'Search PO, site, vendor, item…',
+                        prefixIcon: Icon(Icons.search),
+                      ),
+                      onSubmitted: (v) {
                         setState(() {
-                          _status = s;
+                          _search = v.trim();
                           _page = 1;
                         });
                         _load();
                       },
                     ),
                   ),
+                ),
+                EntranceItem(
+                  index: 1,
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                    child: Row(
+                      children: [
+                        PressScale(
+                          child: ActionChip(
+                            avatar: const Icon(Icons.location_on_outlined, size: 18),
+                            label: Text(_siteId == null ? 'All sites' : _siteLabel),
+                            onPressed: _pickSite,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        PressScale(
+                          child: OutlinedButton(
+                            style: _compactButton,
+                            onPressed: _confirmMerge,
+                            child: Text(_merging ? 'Merge (${_selected.length})' : 'Merge orders'),
+                          ),
+                        ),
+                        if (_merging)
+                          TextButton(
+                            style: TextButton.styleFrom(
+                              minimumSize: const Size(0, 34),
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              visualDensity: VisualDensity.compact,
+                            ),
+                            onPressed: () => setState(() {
+                              _merging = false;
+                              _selected.clear();
+                            }),
+                            child: const Text('Cancel'),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+                if (_merging)
+                  const EntranceItem(
+                    index: 1,
+                    child: Padding(
+                      padding: EdgeInsets.fromLTRB(16, 0, 16, 8),
+                      child: Text(
+                        'Select pending, approved, or revised orders. Only one approved or revised order can be included.',
+                        style: TextStyle(color: AppTheme.muted, fontSize: 12),
+                      ),
+                    ),
+                  ),
+                EntranceItem(
+                  index: 2,
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    padding: AppTheme.chipRowPadding,
+                    child: Row(
+                      children: [
+                        for (final s in ['', 'pending', 'approval_pending', 'approved', 'rejected', 'revised'])
+                          Padding(
+                            padding: const EdgeInsets.only(right: 8),
+                            child: PressScale(
+                              child: ChoiceChip(
+                                label: Text(s.isEmpty ? 'All' : s),
+                                selected: _status == s,
+                                onSelected: (_) {
+                                  setState(() {
+                                    _status = s;
+                                    _page = 1;
+                                  });
+                                  _load();
+                                },
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
               ],
             ),
           ),
+          if (_error != null && !_loading)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: SoftAppear(
+                child: ErrorBanner(message: _error!, onRetry: _load),
+              ),
+            ),
           Expanded(
-            child: RefreshIndicator(
-              onRefresh: _load,
-              child: _loading
-                  ? const CenteredScrollLoader()
-                  : _error != null
-                      ? ListView(
-                          padding: AppTheme.formPadding,
-                          children: [ErrorBanner(message: _error!, onRetry: _load)],
-                        )
-                      : _items.isEmpty
-                          ? EmptyListBody(
-                              message: listEmptyMessage(
-                                noun: 'purchase orders',
-                                search: _search,
-                                filterLabel: [
-                                  if (_status.isNotEmpty) _status,
-                                  if (_siteId != null) 'selected site',
-                                ].join(', '),
-                              ),
-                            )
-                          : ListView.separated(
-                              padding: AppTheme.formPadding,
-                              itemCount: _items.length + 1,
-                              separatorBuilder: (_, _) => const SizedBox(height: 8),
-                              itemBuilder: (context, i) {
-                                if (i == _items.length) {
-                                  return ListPaginationRow(
-                                    page: _page,
-                                    totalPages: pages,
-                                    onPrev: _page > 1
-                                        ? () {
-                                            setState(() => _page -= 1);
-                                            _load();
-                                          }
-                                        : null,
-                                    onNext: _page < pages
-                                        ? () {
-                                            setState(() => _page += 1);
-                                            _load();
-                                          }
-                                        : null,
-                                  );
-                                }
-                                final row = _items[i];
-                                final id = idOf(row);
-                                final status = row['status']?.toString();
-                                final mergeable = id != null && _canMergeStatus(status);
-                                return Card(
-                                  child: ListTile(
-                                    leading: _merging
-                                        ? Checkbox(
-                                            value: id != null && _selected.contains(id),
-                                            onChanged: !mergeable
-                                                ? null
-                                                : (checked) {
-                                                    final selectedId = id;
-                                                    setState(() {
-                                                      if (checked == true) {
-                                                        _selected.add(selectedId);
-                                                      } else {
-                                                        _selected.remove(selectedId);
-                                                      }
-                                                    });
-                                                  },
-                                          )
-                                        : null,
-                                    title: Text(_poNumber(row)),
-                                    subtitle: Text(() {
-                                      final site = siteNameOf(row);
-                                      final vendor = vendorNamesOf(row);
-                                      final text = [
-                                        if (site.isNotEmpty) site,
-                                        if (vendor.isNotEmpty) vendor,
-                                      ].join(' · ');
-                                      return text.isEmpty ? 'Purchase order' : text;
-                                    }()),
-                                    trailing: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        StatusChip(status: status),
-                                        PopupMenuButton<String>(
-                                          tooltip: 'More',
-                                          onSelected: (value) {
-                                            if (id == null) return;
-                                            if (value == 'delete') _deletePo(row);
-                                          },
-                                          itemBuilder: (_) => const [
-                                            PopupMenuItem(
-                                              value: 'delete',
-                                              child: Text('Delete', style: TextStyle(color: AppTheme.danger)),
-                                            ),
-                                          ],
-                                        ),
-                                      ],
-                                    ),
-                                    onTap: id == null
-                                        ? null
-                                        : () async {
-                                            await context.push<bool>('/procurement/po/$id');
-                                            if (mounted) _load();
-                                          },
+            child: StaggeredEntrance(
+              active: !_loading,
+              replayToken: _motion,
+              maxIndex: 6,
+              slide: 16,
+              itemMs: 380,
+              stepMs: 40,
+              scaleFrom: 0.97,
+              child: RefreshIndicator(
+                onRefresh: _load,
+                child: _loading
+                    ? const CenteredScrollLoader()
+                    : _error != null
+                        ? const SizedBox.shrink()
+                        : _items.isEmpty
+                            ? EntranceItem(
+                                index: 0,
+                                child: EmptyListBody(
+                                  message: listEmptyMessage(
+                                    noun: 'purchase orders',
+                                    search: _search,
+                                    filterLabel: [
+                                      if (_status.isNotEmpty) _status,
+                                      if (_siteId != null) 'selected site',
+                                    ].join(', '),
                                   ),
-                                );
-                              },
-                            ),
+                                ),
+                              )
+                            : ListView.separated(
+                                padding: AppTheme.formPadding,
+                                itemCount: _items.length + 1,
+                                separatorBuilder: (_, _) => const SizedBox(height: 8),
+                                itemBuilder: (context, i) {
+                                  if (i == _items.length) {
+                                    return EntranceItem(
+                                      index: 6,
+                                      child: ListPaginationRow(
+                                        page: _page,
+                                        totalPages: pages,
+                                        onPrev: _page > 1
+                                            ? () {
+                                                setState(() => _page -= 1);
+                                                _load();
+                                              }
+                                            : null,
+                                        onNext: _page < pages
+                                            ? () {
+                                                setState(() => _page += 1);
+                                                _load();
+                                              }
+                                            : null,
+                                      ),
+                                    );
+                                  }
+                                  final row = _items[i];
+                                  final id = idOf(row);
+                                  final status = row['status']?.toString();
+                                  final mergeable = id != null && _canMergeStatus(status);
+                                  return EntranceItem(
+                                    index: i,
+                                    child: PressScale(
+                                      enabled: !_merging && id != null,
+                                      child: Card(
+                                        child: ListTile(
+                                          leading: _merging
+                                              ? Checkbox(
+                                                  value: id != null && _selected.contains(id),
+                                                  onChanged: !mergeable
+                                                      ? null
+                                                      : (checked) {
+                                                          final selectedId = id;
+                                                          setState(() {
+                                                            if (checked == true) {
+                                                              _selected.add(selectedId);
+                                                            } else {
+                                                              _selected.remove(selectedId);
+                                                            }
+                                                          });
+                                                        },
+                                                )
+                                              : null,
+                                          title: Text(_poNumber(row)),
+                                          subtitle: Text(() {
+                                            final site = siteNameOf(row);
+                                            final vendor = vendorNamesOf(row);
+                                            final text = [
+                                              if (site.isNotEmpty) site,
+                                              if (vendor.isNotEmpty) vendor,
+                                            ].join(' · ');
+                                            return text.isEmpty ? 'Purchase order' : text;
+                                          }()),
+                                          trailing: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              StatusChip(status: status),
+                                              PopupMenuButton<String>(
+                                                tooltip: 'More',
+                                                onSelected: (value) {
+                                                  if (id == null) return;
+                                                  if (value == 'delete') _deletePo(row);
+                                                },
+                                                itemBuilder: (_) => const [
+                                                  PopupMenuItem(
+                                                    value: 'delete',
+                                                    child: Text('Delete', style: TextStyle(color: AppTheme.danger)),
+                                                  ),
+                                                ],
+                                              ),
+                                            ],
+                                          ),
+                                          onTap: id == null
+                                              ? null
+                                              : () async {
+                                                  await context.push<bool>('/procurement/po/$id');
+                                                  if (mounted) _load();
+                                                },
+                                        ),
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
+              ),
             ),
           ),
         ],

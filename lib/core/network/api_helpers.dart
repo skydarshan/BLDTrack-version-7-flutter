@@ -168,8 +168,30 @@ String? flutterNotificationPath(String? link) {
   if (link == null || link.isEmpty) return null;
   var path = link.trim();
   if (!path.startsWith('/')) return null;
+  final uri = Uri.tryParse(path);
+  final open = uri?.queryParameters['open'] ?? '';
+  final filter = uri?.queryParameters['filter'] ?? '';
+  final tab = uri?.queryParameters['tab'] ?? '';
   final queryAt = path.indexOf('?');
   if (queryAt >= 0) path = path.substring(0, queryAt);
+
+  if (path.startsWith('/dashboard/dpr-approvals') ||
+      path.startsWith('/daily-progress-reports/approvals')) {
+    return open.isEmpty ? '/pms/dpr/approvals' : '/pms/dpr/approvals?open=$open';
+  }
+  if (path.startsWith('/daily-progress-reports/missing') ||
+      filter == 'missing' ||
+      tab == 'missing') {
+    if (path.contains('daily-progress') || path.contains('dpr')) {
+      return '/pms/dpr?tab=missing';
+    }
+  }
+  final dprId = RegExp(r'^/daily-progress-reports/([a-fA-F0-9]{24})$').firstMatch(path);
+  if (dprId != null) return '/pms/dpr/${dprId[1]}';
+  if (path.startsWith('/dashboard/daily-progress-reports')) {
+    if (open.isNotEmpty) return '/pms/dpr/$open';
+    return '/pms/dpr';
+  }
 
   if (path.startsWith('/procurement/') ||
       path.startsWith('/inventory/') ||

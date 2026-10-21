@@ -3,6 +3,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 
+import '../widgets/motion.dart';
 import 'app_theme.dart';
 
 /// Gradient header with soft rounded bottom — Linear / Notion mobile style.
@@ -14,6 +15,7 @@ class ModernAppBar extends StatelessWidget implements PreferredSizeWidget {
     this.leading,
     this.bottom,
     this.gradient,
+    this.animateTitle = false,
   });
 
   final String title;
@@ -21,6 +23,9 @@ class ModernAppBar extends StatelessWidget implements PreferredSizeWidget {
   final Widget? leading;
   final PreferredSizeWidget? bottom;
   final Gradient? gradient;
+
+  /// Fades and rises the title the same way home cards enter.
+  final bool animateTitle;
 
   @override
   Size get preferredSize =>
@@ -36,10 +41,7 @@ class ModernAppBar extends StatelessWidget implements PreferredSizeWidget {
       backgroundColor: Colors.transparent,
       foregroundColor: Colors.white,
       centerTitle: false,
-              title: Text(
-        title,
-        style: AppTheme.headlineSmall.copyWith(color: Colors.white, fontSize: 18),
-      ),
+      title: _title,
       flexibleSpace: ClipRRect(
         borderRadius: const BorderRadius.vertical(bottom: Radius.circular(24)),
         child: Container(
@@ -50,6 +52,22 @@ class ModernAppBar extends StatelessWidget implements PreferredSizeWidget {
         ),
       ),
       bottom: bottom,
+    );
+  }
+
+  Widget get _title {
+    final text = Text(
+      title,
+      style: AppTheme.headlineSmall.copyWith(color: Colors.white, fontSize: 18),
+    );
+    if (!animateTitle) return text;
+    return StaggeredEntrance(
+      maxIndex: 0,
+      slide: 12,
+      itemMs: 360,
+      stepMs: 40,
+      scaleFrom: 0.98,
+      child: EntranceItem(index: 0, child: text),
     );
   }
 }

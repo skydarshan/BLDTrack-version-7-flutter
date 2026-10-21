@@ -2,7 +2,7 @@
 const moduleCatalog = {
   'procurement': ['requisition', 'rate_comparison', 'purchase_order', 'dmr'],
   'inventory': ['inventory', 'material_issue', 'inter_site_transfer', 'scrape_disposal'],
-  'project_management': ['projects', 'templates', 'tasks', 'task_progress'],
+  'project_management': ['projects', 'templates', 'tasks', 'task_progress', 'dpr'],
 };
 
 const workspaceOrder = ['procurement', 'inventory', 'project_management'];
@@ -26,6 +26,7 @@ const submoduleLabels = {
   'templates': 'Templates',
   'tasks': 'Tasks',
   'task_progress': 'Task progress',
+  'dpr': 'Daily progress',
 };
 
 Map<String, List<String>> get moduleCatalogMap =>
@@ -64,6 +65,9 @@ Map<String, dynamic> normalizeOrgModules(dynamic stored) {
     for (final sub in subs.keys) {
       if (storedSubs[sub] is bool) {
         subs[sub] = storedSubs[sub] == true;
+      } else if (sub == 'dpr' && storedModule['enabled'] == true) {
+        // Orgs saved before the DPR submodule existed keep it on with Project Management.
+        subs[sub] = true;
       }
     }
     (normalized[key] as Map)['submodules'] = subs;
@@ -150,6 +154,7 @@ const workspacePermissionModules = {
     'projecttemplate',
     'task',
     'taskprogress',
+    'dpr',
     'contractor',
   ],
 };

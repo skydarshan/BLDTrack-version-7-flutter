@@ -198,6 +198,7 @@ String refId(dynamic raw) {
 }
 
 String formatModuleLabel(String module) {
+  if (module == 'dpr') return 'DPR';
   return module
       .split(RegExp(r'[-_]'))
       .where((p) => p.isNotEmpty)

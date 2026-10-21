@@ -12,6 +12,10 @@ import '../features/dmr/screens/dmr_screens.dart';
 import '../features/inventory/screens/inventory_screens.dart';
 import '../features/org/org_session.dart';
 import '../features/platform/screens/platform_screens.dart';
+import '../features/pms/screens/dpr_approvals_screen.dart';
+import '../features/pms/screens/dpr_detail_screen.dart';
+import '../features/pms/screens/dpr_editor_screen.dart';
+import '../features/pms/screens/dpr_reports_screen.dart';
 import '../features/pms/screens/pms_home_screen.dart';
 import '../features/pms/screens/project_detail_screen.dart';
 import '../features/pms/screens/project_form_screen.dart';
@@ -26,10 +30,12 @@ import '../features/procurement/screens/procurement_screens.dart';
 import '../features/procurement/screens/rc_editor_screen.dart';
 import '../features/procurement/screens/rc_po_screens.dart';
 import '../features/settings/screens/app_settings_screen.dart';
+import '../features/settings/screens/email_templates_screen.dart';
 import '../features/settings/screens/audit_logs_screen.dart';
 import '../features/settings/screens/companies_screen.dart';
 import '../features/settings/screens/contractors_screen.dart';
 import '../features/settings/screens/items_screen.dart';
+import '../features/settings/screens/modules_screen.dart';
 import '../features/settings/screens/organization_screen.dart';
 import '../features/settings/screens/roles_screen.dart';
 import '../features/settings/screens/settings_hub_screen.dart';
@@ -204,6 +210,16 @@ GoRouter createAppRouter(
           ),
 
           GoRoute(path: '/pms', builder: (_, _) => const PmsHomeScreen()),
+          GoRoute(path: '/pms/dpr', builder: (_, _) => const DprReportsScreen()),
+          GoRoute(path: '/pms/dpr/approvals', builder: (_, _) => const DprApprovalsScreen()),
+          GoRoute(
+            path: '/pms/dpr/:id/edit',
+            builder: (_, state) => DprEditorScreen(reportId: state.pathParameters['id']),
+          ),
+          GoRoute(
+            path: '/pms/dpr/:id',
+            builder: (_, state) => DprDetailScreen(reportId: state.pathParameters['id']!),
+          ),
           GoRoute(path: '/pms/projects', builder: (_, _) => const ProjectsListScreen()),
           GoRoute(path: '/pms/projects/new', builder: (_, _) => const ProjectFormScreen()),
           GoRoute(
@@ -243,8 +259,13 @@ GoRouter createAppRouter(
           ),
           GoRoute(path: '/pms/settings', builder: (_, _) => const SettingsHubScreen()),
           GoRoute(path: '/pms/settings/app', builder: (_, _) => const AppSettingsScreen()),
+          GoRoute(
+            path: '/pms/settings/email-templates',
+            builder: (_, _) => const EmailTemplatesScreen(),
+          ),
           GoRoute(path: '/pms/settings/users', builder: (_, _) => const UsersScreen()),
           GoRoute(path: '/pms/settings/roles', builder: (_, _) => const RolesScreen()),
+          GoRoute(path: '/pms/settings/modules', builder: (_, _) => const ModulesScreen()),
           GoRoute(path: '/pms/settings/organization', builder: (_, _) => const OrganizationScreen()),
           GoRoute(path: '/pms/settings/locations', builder: (_, _) => const LocationsScreen()),
           GoRoute(path: '/pms/settings/companies', builder: (_, _) => const CompaniesScreen()),

@@ -119,6 +119,12 @@ class SettingsNav {
       icon: Icons.business_outlined,
       permission: 'organization',
     ),
+    SettingsNavItem(
+      path: '/pms/settings/modules',
+      label: 'Modules',
+      icon: Icons.view_module_outlined,
+      permission: 'module',
+    ),
   ];
 
   static const masters = <SettingsNavItem>[

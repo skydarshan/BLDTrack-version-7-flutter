@@ -6,8 +6,10 @@ import '../../core/network/api_helpers.dart';
 import '../../core/org/org_modules.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/modern_widgets.dart';
+import '../../core/widgets/motion.dart';
 import '../auth/providers/auth_provider.dart';
 import '../org/org_session.dart';
+import '../pms/utils/dpr_format.dart';
 
 class AppShell extends StatelessWidget {
   const AppShell({super.key, required this.child});
@@ -205,6 +207,7 @@ class UserProfileButton extends StatelessWidget {
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
+      backgroundColor: Colors.transparent,
       builder: (sheetContext) {
         return _ProfileSheet(
           onLogout: () async {
@@ -265,76 +268,124 @@ class _ProfileSheetState extends State<_ProfileSheet> {
           child: ConstrainedBox(
             constraints: BoxConstraints(maxWidth: wide ? 480 : double.infinity),
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
-              child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Center(
-                  child: Container(
-                    width: 36,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: AppTheme.border,
-                      borderRadius: BorderRadius.circular(4),
-                    ),
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(28),
+                  boxShadow: AppTheme.elevatedShadow,
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(28),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _ProfileHeader(
+                        initial: initial,
+                        name: name.isEmpty ? 'Signed in' : name,
+                        email: email,
+                        role: role.isEmpty ? 'User' : role,
+                        expanded: _detailsOpen,
+                        onTap: () => setState(() => _detailsOpen = !_detailsOpen),
+                      ),
+                      AnimatedSize(
+                        duration: const Duration(milliseconds: 220),
+                        curve: Curves.easeOutCubic,
+                        alignment: Alignment.topCenter,
+                        child: _detailsOpen
+                            ? Padding(
+                                padding: const EdgeInsets.fromLTRB(14, 14, 14, 6),
+                                child: Column(
+                                  children: [
+                                    _ProfileDetailTile(
+                                      icon: Icons.badge_rounded,
+                                      label: 'Role',
+                                      value: role.isEmpty ? 'User' : role,
+                                      color: AppTheme.brand,
+                                    ),
+                                    const SizedBox(height: 8),
+                                    _ProfileDetailTile(
+                                      icon: Icons.mail_rounded,
+                                      label: 'Email',
+                                      value: email.isEmpty ? 'Not available' : email,
+                                      color: AppTheme.info,
+                                    ),
+                                    const SizedBox(height: 8),
+                                    const _ProfileDetailTile(
+                                      icon: Icons.verified_rounded,
+                                      label: 'Account',
+                                      value: 'Signed in',
+                                      color: AppTheme.success,
+                                      valueColor: AppTheme.success,
+                                    ),
+                                    if (org != null) ...[
+                                      const SizedBox(height: 8),
+                                      _ProfileDetailTile(
+                                        icon: Icons.apartment_rounded,
+                                        label: 'Organisation',
+                                        value: org,
+                                        color: AppTheme.accent,
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              )
+                            : const SizedBox(width: double.infinity),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(14, 8, 14, 14),
+                        child: Material(
+                          color: const Color(0xFFFFF1F2),
+                          borderRadius: BorderRadius.circular(16),
+                          child: InkWell(
+                            onTap: widget.onLogout,
+                            borderRadius: BorderRadius.circular(16),
+                            child: const Padding(
+                              padding: EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                              child: Row(
+                                children: [
+                                  _ProfileIconBadge(
+                                    icon: Icons.logout_rounded,
+                                    color: AppTheme.danger,
+                                  ),
+                                  SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          'Logout',
+                                          style: TextStyle(
+                                            color: AppTheme.danger,
+                                            fontWeight: FontWeight.w700,
+                                            fontSize: 15,
+                                          ),
+                                        ),
+                                        SizedBox(height: 2),
+                                        Text(
+                                          'Sign out of this account',
+                                          style: TextStyle(
+                                            color: Color(0xFFFB7185),
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(height: 12),
-                _ProfileHeader(
-                  initial: initial,
-                  name: name.isEmpty ? 'Signed in' : name,
-                  email: email,
-                  expanded: _detailsOpen,
-                  onTap: () => setState(() => _detailsOpen = !_detailsOpen),
-                ),
-                if (_detailsOpen) ...[
-                  const SizedBox(height: 10),
-                  _ProfileDetailTile(
-                    icon: Icons.badge_outlined,
-                    label: 'Role',
-                    value: role.isEmpty ? 'User' : role,
-                  ),
-                  const SizedBox(height: 8),
-                  _ProfileDetailTile(
-                    icon: Icons.mail_outline_rounded,
-                    label: 'Email',
-                    value: email.isEmpty ? 'Not available' : email,
-                  ),
-                  const SizedBox(height: 8),
-                  const _ProfileDetailTile(
-                    icon: Icons.verified_user_outlined,
-                    label: 'Account',
-                    value: 'Signed in',
-                    valueColor: AppTheme.success,
-                  ),
-                  if (org != null) ...[
-                    const SizedBox(height: 8),
-                    _ProfileDetailTile(
-                      icon: Icons.apartment_rounded,
-                      label: 'Organisation',
-                      value: org,
-                    ),
-                  ],
-                ],
-                const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 12),
-                  child: Divider(height: 1),
-                ),
-                FilledButton.icon(
-                  style: FilledButton.styleFrom(
-                    backgroundColor: AppTheme.danger,
-                    foregroundColor: Colors.white,
-                    minimumSize: const Size.fromHeight(48),
-                  ),
-                  onPressed: widget.onLogout,
-                  icon: const Icon(Icons.logout_rounded),
-                  label: const Text('Logout'),
-                ),
-              ],
+              ),
             ),
           ),
-        ),
         ),
       ),
     );
@@ -346,6 +397,7 @@ class _ProfileHeader extends StatelessWidget {
     required this.initial,
     required this.name,
     required this.email,
+    required this.role,
     required this.expanded,
     required this.onTap,
   });
@@ -353,63 +405,120 @@ class _ProfileHeader extends StatelessWidget {
   final String initial;
   final String name;
   final String email;
+  final String role;
   final bool expanded;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: AppTheme.brandLight,
-      borderRadius: BorderRadius.circular(16),
+      color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        hoverColor: AppTheme.brand.withValues(alpha: 0.08),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(12, 12, 8, 12),
-          child: Row(
-            children: [
-              CircleAvatar(
-                radius: 26,
-                backgroundColor: AppTheme.brand,
-                child: Text(
-                  initial,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w800,
-                    fontSize: 20,
+        child: Ink(
+          decoration: BoxDecoration(gradient: AppTheme.brandGradient),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 18, 12, 16),
+            child: Row(
+              children: [
+                Container(
+                  width: 52,
+                  height: 52,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: Colors.white.withValues(alpha: 0.38)),
+                  ),
+                  child: Text(
+                    initial,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 22,
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
-                    ),
-                    if (email.isNotEmpty)
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
                       Text(
-                        email,
+                        name,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(color: AppTheme.muted, fontSize: 13),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 17,
+                          fontWeight: FontWeight.w800,
+                        ),
                       ),
-                  ],
+                      const SizedBox(height: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.18),
+                          borderRadius: BorderRadius.circular(999),
+                          border: Border.all(color: Colors.white.withValues(alpha: 0.32)),
+                        ),
+                        child: Text(
+                          role,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                      if (email.isNotEmpty) ...[
+                        const SizedBox(height: 6),
+                        Text(
+                          email,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.86),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
                 ),
-              ),
-              Icon(
-                expanded ? Icons.expand_less_rounded : Icons.expand_more_rounded,
-                color: AppTheme.brand,
-              ),
-            ],
+                Icon(
+                  expanded ? Icons.expand_less_rounded : Icons.expand_more_rounded,
+                  color: Colors.white,
+                ),
+              ],
+            ),
           ),
         ),
       ),
+    );
+  }
+}
+
+class _ProfileIconBadge extends StatelessWidget {
+  const _ProfileIconBadge({required this.icon, required this.color});
+
+  final IconData icon;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 38,
+      height: 38,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Icon(icon, size: 18, color: color),
     );
   }
 }
@@ -419,49 +528,47 @@ class _ProfileDetailTile extends StatelessWidget {
     required this.icon,
     required this.label,
     required this.value,
+    required this.color,
     this.valueColor,
   });
 
   final IconData icon;
   final String label;
   final String value;
+  final Color color;
   final Color? valueColor;
 
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: Colors.white,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: AppTheme.border.withValues(alpha: 0.9)),
-      ),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12),
-        hoverColor: AppTheme.brandLight,
-        onTap: () {},
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          child: Row(
-            children: [
-              Icon(icon, size: 20, color: AppTheme.brand),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(label, style: const TextStyle(color: AppTheme.muted, fontSize: 12)),
-                    const SizedBox(height: 2),
-                    Text(
-                      value,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontWeight: FontWeight.w700, color: valueColor ?? AppTheme.primary),
+      color: color.withValues(alpha: 0.08),
+      borderRadius: BorderRadius.circular(16),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        child: Row(
+          children: [
+            _ProfileIconBadge(icon: icon, color: color),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(label, style: const TextStyle(color: AppTheme.muted, fontSize: 12, fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 2),
+                  Text(
+                    value,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 14,
+                      color: valueColor ?? AppTheme.primary,
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -488,6 +595,8 @@ class MoreHubScreen extends StatelessWidget {
     _MoreTile('Tasks', Icons.task_alt_rounded, '/pms/tasks', 2, 'project_management', 'tasks'),
     _MoreTile('Templates', Icons.copy_all_rounded, '/pms/templates', 3, 'project_management', 'templates'),
     _MoreTile('Task Approvals', Icons.verified_rounded, '/pms/approvals', 4, 'project_management', 'task_progress'),
+    _MoreTile('Daily Reports', Icons.calendar_month_rounded, '/pms/dpr', 5, 'project_management', 'dpr'),
+    _MoreTile('DPR Approvals', Icons.fact_check_rounded, '/pms/dpr/approvals', 6, 'project_management', 'dpr'),
     _MoreTile('Notifications', Icons.notifications_active_rounded, '/notifications', 5, null, null),
     _MoreTile('Plans & Payments', Icons.credit_card_rounded, '/billing', 6, null, null),
     _MoreTile('Settings & Masters', Icons.settings_suggest_rounded, '/pms/settings', 7, null, null),
@@ -498,64 +607,43 @@ class MoreHubScreen extends StatelessWidget {
     final org = context.watch<OrgSession>();
     final visible = _tiles.where((t) {
       if (t.module == null) return true;
-      return org.canUseSubmodule(t.module!, t.submodule!);
+      if (!org.canUseSubmodule(t.module!, t.submodule!)) return false;
+      if (t.path == '/pms/dpr') return canDpr(context, 'read');
+      if (t.path == '/pms/dpr/approvals') return canAccessDprApprovals(context);
+      return true;
     }).toList();
 
     return Scaffold(
       extendBody: true,
-      appBar: ModernAppBar(
+      appBar: const ModernAppBar(
         title: 'More',
-        actions: const [WorkspaceSwitcherButton()],
+        animateTitle: true,
+        actions: [WorkspaceSwitcherButton()],
       ),
-      body: GridView.builder(
-        padding: AppTheme.pagePadding,
+      body: StaggeredEntrance(
+        maxIndex: 6,
+        slide: 14,
+        itemMs: 400,
+        stepMs: 36,
+        scaleFrom: 0.96,
+        child: GridView(
+          padding: AppTheme.pagePadding,
           gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 2,
-          mainAxisSpacing: 8,
-          crossAxisSpacing: 8,
-          childAspectRatio: 1.7,
-        ),
-        itemCount: visible.length,
-        itemBuilder: (context, i) {
-          final t = visible[i];
-          final color = AppTheme.colorAt(t.colorIndex);
-          return Material(
-            color: Colors.transparent,
-            child: InkWell(
-              onTap: () => context.push(t.path),
-              borderRadius: BorderRadius.circular(20),
-              child: Ink(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(20),
-                  color: Colors.white,
-                  boxShadow: AppTheme.cardShadow,
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      color.withValues(alpha: 0.08),
-                      Colors.white,
-                    ],
-                  ),
-                ),
-                padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    AppIconBadge(icon: t.icon, color: color),
-                    const SizedBox(height: 8),
-                    Text(
-                      t.title,
-                      style: AppTheme.titleSmall,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
+            crossAxisCount: 2,
+            mainAxisSpacing: 8,
+            crossAxisSpacing: 8,
+            childAspectRatio: 1.7,
+          ),
+          children: [
+            for (var i = 0; i < visible.length; i++)
+              EntranceItem(
+                index: i,
+                child: PressScale(
+                  child: _MoreTileButton(tile: visible[i]),
                 ),
               ),
-            ),
-          );
-        },
+          ],
+        ),
       ),
     );
   }
@@ -576,6 +664,53 @@ class _MoreTile {
   final int colorIndex;
   final String? module;
   final String? submodule;
+}
+
+class _MoreTileButton extends StatelessWidget {
+  const _MoreTileButton({required this.tile});
+
+  final _MoreTile tile;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = AppTheme.colorAt(tile.colorIndex);
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () => context.push(tile.path),
+        borderRadius: BorderRadius.circular(20),
+        child: Ink(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            color: Colors.white,
+            boxShadow: AppTheme.cardShadow,
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                color.withValues(alpha: 0.08),
+                Colors.white,
+              ],
+            ),
+          ),
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              AppIconBadge(icon: tile.icon, color: color),
+              const SizedBox(height: 8),
+              Text(
+                tile.title,
+                style: AppTheme.titleSmall,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 int paginationTotalPages(Map<String, dynamic>? pagination) {

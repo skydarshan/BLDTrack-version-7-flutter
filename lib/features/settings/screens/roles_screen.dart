@@ -37,9 +37,28 @@ const _defaultModules = [
   'task',
   'projecttemplate',
   'taskprogress',
+  'dpr',
 ];
 
 const _crudActions = ['create', 'read', 'update', 'delete'];
+
+const _dprPermissionHints = {
+  'create': 'Start a new daily report draft for a site and date.',
+  'read': 'Open history, today, missing boards, and read-only detail.',
+  'update': 'Edit draft or sent-back reports; save sections and media.',
+  'delete': 'Remove draft reports only (submitted reports stay locked).',
+  'submit': 'File a report for approval after the draft is complete.',
+  'approve': 'Use the DPR approval inbox, approve/revise, and remind missing sites.',
+};
+
+String? _dprPermissionHint(String action) => _dprPermissionHints[action];
+
+List<String> _actionsForModule(String module) {
+  if (module == 'dpr') {
+    return const ['create', 'read', 'update', 'delete', 'submit', 'approve'];
+  }
+  return _crudActions;
+}
 
 Map<String, bool> _parseModulePermissions(Map<String, dynamic> mp) {
   return Map<String, bool>.from(
@@ -49,24 +68,29 @@ Map<String, bool> _parseModulePermissions(Map<String, dynamic> mp) {
   );
 }
 
-bool _moduleFullySelected(Map<String, bool> perms) =>
-    _crudActions.every((a) => perms[a] == true);
+bool _moduleFullySelected(String module, Map<String, bool> perms) =>
+    _actionsForModule(module).every((a) => perms[a] == true);
 
-bool _modulePartiallySelected(Map<String, bool> perms) {
-  final selected = _crudActions.where((a) => perms[a] == true).length;
-  return selected > 0 && selected < _crudActions.length;
+bool _modulePartiallySelected(String module, Map<String, bool> perms) {
+  final actions = _actionsForModule(module);
+  final selected = actions.where((a) => perms[a] == true).length;
+  return selected > 0 && selected < actions.length;
 }
 
 bool _allPermissionsSelected(List<Map<String, dynamic>> matrix) {
   if (matrix.isEmpty) return false;
-  return matrix.every((mp) => _moduleFullySelected(_parseModulePermissions(mp)));
+  return matrix.every((mp) {
+    final module = mp['module']?.toString() ?? '';
+    return _moduleFullySelected(module, _parseModulePermissions(mp));
+  });
 }
 
 bool _somePermissionsSelected(List<Map<String, dynamic>> matrix) {
   var any = false;
   for (final mp in matrix) {
+    final module = mp['module']?.toString() ?? '';
     final perms = _parseModulePermissions(mp);
-    if (_crudActions.any((a) => perms[a] == true)) {
+    if (_actionsForModule(module).any((a) => perms[a] == true)) {
       any = true;
       break;
     }
@@ -80,9 +104,10 @@ List<Map<String, dynamic>> _setModulePermissionsAll(
   bool checked,
 ) {
   final next = List<Map<String, dynamic>>.from(matrix);
+  final module = next[index]['module']?.toString() ?? '';
   next[index] = {
-    'module': next[index]['module'],
-    'permissions': {for (final a in _crudActions) a: checked},
+    'module': module,
+    'permissions': {for (final a in _actionsForModule(module)) a: checked},
   };
   return next;
 }
@@ -93,9 +118,12 @@ List<Map<String, dynamic>> _setAllPermissions(
 ) {
   return matrix
       .map(
-        (mp) => {
-          'module': mp['module'],
-          'permissions': {for (final a in _crudActions) a: checked},
+        (mp) {
+          final module = mp['module']?.toString() ?? '';
+          return {
+            'module': module,
+            'permissions': {for (final a in _actionsForModule(module)) a: checked},
+          };
         },
       )
       .toList();
@@ -202,8 +230,8 @@ class _RolesScreenState extends State<RolesScreen> {
     }
   }
 
-  Map<String, bool> _blankPerms() => {
-        for (final a in _crudActions) a: false,
+  Map<String, bool> _blankPerms(String module) => {
+        for (final a in _actionsForModule(module)) a: false,
       };
 
   List<Map<String, dynamic>> _initialMatrix([
@@ -224,10 +252,10 @@ class _RolesScreenState extends State<RolesScreen> {
       ..sort();
     return visibleModules.map((m) {
       final existingMp = byModule[m];
-      final perms = _blankPerms();
+      final perms = _blankPerms(m);
       final raw = existingMp?['permissions'];
       if (raw is Map) {
-        for (final a in _crudActions) {
+        for (final a in _actionsForModule(m)) {
           perms[a] = raw[a] == true;
         }
       }
@@ -353,6 +381,7 @@ class _RolesScreenState extends State<RolesScreen> {
                           final mp = matrix[i];
                           final module = mp['module']?.toString() ?? '';
                           final perms = _parseModulePermissions(mp);
+                          final actions = _actionsForModule(module);
                           return Card(
                             margin: const EdgeInsets.only(bottom: 8),
                             child: Padding(
@@ -375,9 +404,9 @@ class _RolesScreenState extends State<RolesScreen> {
                                         materialTapTargetSize:
                                             MaterialTapTargetSize.shrinkWrap,
                                         visualDensity: VisualDensity.compact,
-                                        value: _moduleFullySelected(perms)
+                                        value: _moduleFullySelected(module, perms)
                                             ? true
-                                            : (_modulePartiallySelected(perms)
+                                            : (_modulePartiallySelected(module, perms)
                                                 ? null
                                                 : false),
                                         onChanged: (v) {
@@ -393,7 +422,7 @@ class _RolesScreenState extends State<RolesScreen> {
                                       GestureDetector(
                                         onTap: () {
                                           final selectAll =
-                                              !_moduleFullySelected(perms);
+                                              !_moduleFullySelected(module, perms);
                                           setLocal(() {
                                             matrix = _setModulePermissionsAll(
                                               matrix,
@@ -411,9 +440,10 @@ class _RolesScreenState extends State<RolesScreen> {
                                   ),
                                   Wrap(
                                     children: [
-                                      for (final action in _crudActions)
+                                      for (final action in actions)
                                         FilterChip(
                                           label: Text(action),
+                                          tooltip: module == 'dpr' ? _dprPermissionHint(action) : null,
                                           selected: perms[action] == true,
                                           onSelected: (v) {
                                             setLocal(() {

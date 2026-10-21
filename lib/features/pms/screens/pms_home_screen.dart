@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
@@ -8,12 +10,15 @@ import '../../../core/theme/app_theme.dart';
 import '../../../core/theme/modern_widgets.dart';
 import '../../../core/widgets/motion.dart';
 import '../../app/app_shell.dart';
+import '../../org/org_session.dart';
 import '../services/pms_services.dart';
+import '../utils/dpr_format.dart';
 import '../utils/site_options.dart';
 import '../widgets/pickers.dart';
 import '../widgets/pms_widgets.dart';
 
-/// Mobile PMS home â€” essentials only (charts / long status lists stay on web).
+/// Project management home — status charts, workload counts, and the full
+/// recent project list, matching the website overview.
 class PmsHomeScreen extends StatefulWidget {
   const PmsHomeScreen({super.key});
 
@@ -28,6 +33,7 @@ class _PmsHomeScreenState extends State<PmsHomeScreen> {
   String _siteLabel = 'All sites';
   Map<String, dynamic>? _overview;
   List<OptionItem> _siteOptions = const [];
+  int _motion = 0;
 
   @override
   void initState() {
@@ -60,6 +66,7 @@ class _PmsHomeScreenState extends State<PmsHomeScreen> {
       setState(() {
         _overview = overview;
         _loading = false;
+        _motion += 1;
       });
     } on ApiException catch (e) {
       if (!mounted) return;
@@ -130,9 +137,14 @@ class _PmsHomeScreenState extends State<PmsHomeScreen> {
         ? (projects!['recent'] as List)
               .whereType<Map>()
               .map((e) => Map<String, dynamic>.from(e))
-              .take(5)
               .toList()
         : <Map<String, dynamic>>[];
+    final projectCounts = _countMap(projects?['counts']);
+    final taskCounts = _countMap(tasks?['counts']);
+    final taskOverdue = tasks?['overdue'] is num
+        ? (tasks!['overdue'] as num).toInt()
+        : int.tryParse('${tasks?['overdue'] ?? overdue}') ?? overdue;
+    final completedProjects = projectCounts['completed'] ?? 0;
 
     final avg = projects?['avg_progress'];
 
@@ -140,6 +152,12 @@ class _PmsHomeScreenState extends State<PmsHomeScreen> {
       extendBody: true,
       body: StaggeredEntrance(
         active: !_loading,
+        replayToken: _motion,
+        maxIndex: 8,
+        slide: 20,
+        itemMs: 420,
+        stepMs: 50,
+        scaleFrom: 0.97,
         child: RefreshIndicator(
           onRefresh: _load,
           edgeOffset: 72,
@@ -157,7 +175,9 @@ class _PmsHomeScreenState extends State<PmsHomeScreen> {
                 titleSpacing: 16,
                 title: StaggeredEntrance(
                   maxIndex: 0,
-                  slide: 20,
+                  slide: 14,
+                  itemMs: 380,
+                  scaleFrom: 0.98,
                   child: EntranceItem(
                     index: 0,
                     child: Column(
@@ -345,7 +365,7 @@ class _PmsHomeScreenState extends State<PmsHomeScreen> {
                                                 label: 'Approvals',
                                                 value: '${ready + pending}',
                                                 hint: pending > 0 || ready > 0
-                                                    ? '$ready ready Â· $pending final'
+                                                    ? '$ready ready · $pending final'
                                                     : null,
                                                 icon: Icons.verified_rounded,
                                                 color: (ready + pending) > 0
@@ -371,7 +391,53 @@ class _PmsHomeScreenState extends State<PmsHomeScreen> {
                             const SizedBox(height: AppTheme.gridGap),
                             EntranceItem(
                               index: 6,
-                              child: _ProgressStrip(percent: avg),
+                              child: _ProgressStrip(
+                                percent: avg,
+                                overdue: taskOverdue,
+                                completed: completedProjects,
+                              ),
+                            ),
+                          ],
+                          const SizedBox(height: AppTheme.sectionGap),
+                          EntranceItem(
+                            index: 7,
+                            child: _StatusChartCard(
+                              title: 'Project status',
+                              subtitle:
+                                  '${projects?['total'] ?? 0} total projects',
+                              slices: _statusSlices(
+                                projectCounts,
+                                byKey: _projectStatusColors,
+                              ),
+                              emptyMessage: 'No project data yet',
+                            ),
+                          ),
+                          EntranceItem(
+                            index: 8,
+                            child: _StatusChartCard(
+                              title: 'Task distribution',
+                              subtitle: '${tasks?['total'] ?? 0} total tasks',
+                              slices: _statusSlices(
+                                taskCounts,
+                                byIndex: _taskStatusColors,
+                              ),
+                              emptyMessage: 'No task data yet',
+                            ),
+                          ),
+                          if (context.watch<OrgSession>().canUseSubmodule('project_management', 'dpr') &&
+                              canDpr(context, 'read')) ...[
+                            const SizedBox(height: AppTheme.sectionGap),
+                            EntranceItem(
+                              index: 6,
+                              child: PressScale(
+                                child: ModernListCard(
+                                  title: 'Daily progress reports',
+                                  subtitle: 'One report per site per day',
+                                  icon: Icons.calendar_month_rounded,
+                                  color: AppTheme.accent,
+                                  onTap: () => context.go('/pms/dpr'),
+                                ),
+                              ),
                             ),
                           ],
                           const SizedBox(height: AppTheme.sectionGap),
@@ -410,7 +476,8 @@ class _PmsHomeScreenState extends State<PmsHomeScreen> {
                                     subtitle: [
                                       statusLabel(p['status']?.toString()),
                                       if (p['site'] != null) labelOf(p['site']),
-                                    ].join(' Â· '),
+                                      '${_percentOf(p['progress']).round()}%',
+                                    ].join(' · '),
                                     icon: Icons.folder_special_rounded,
                                     color: AppTheme.colorAt(i),
                                     trailing: StatusChip(
@@ -556,9 +623,15 @@ class _AttentionRow extends StatelessWidget {
 }
 
 class _ProgressStrip extends StatelessWidget {
-  const _ProgressStrip({required this.percent});
+  const _ProgressStrip({
+    required this.percent,
+    required this.overdue,
+    required this.completed,
+  });
 
   final dynamic percent;
+  final int overdue;
+  final int completed;
 
   @override
   Widget build(BuildContext context) {
@@ -608,8 +681,226 @@ class _ProgressStrip extends StatelessWidget {
               color: color,
             ),
           ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  '$overdue overdue',
+                  style: AppTheme.bodySmall.copyWith(
+                    color: overdue > 0 ? AppTheme.danger : AppTheme.muted,
+                  ),
+                ),
+              ),
+              Text(
+                '$completed completed',
+                style: AppTheme.bodySmall.copyWith(color: AppTheme.success),
+              ),
+            ],
+          ),
         ],
       ),
     );
   }
+}
+
+Map<String, int> _countMap(dynamic raw) {
+  if (raw is! Map) return {};
+  final out = <String, int>{};
+  for (final entry in raw.entries) {
+    final value = entry.value;
+    out['${entry.key}'] = value is num
+        ? value.toInt()
+        : int.tryParse('$value') ?? 0;
+  }
+  return out;
+}
+
+double _percentOf(dynamic value) {
+  if (value is num) return value.toDouble();
+  return double.tryParse('$value') ?? 0;
+}
+
+const _projectStatusColors = <String, Color>{
+  'not_started': Color(0xFF94A3B8),
+  'in_progress': Color(0xFF3B82F6),
+  'on_hold': Color(0xFFF59E0B),
+  'completed': Color(0xFF22C55E),
+  'archived': Color(0xFFA1A1AA),
+  'cancelled': Color(0xFFEF4444),
+  'completion_requested': Color(0xFF8B5CF6),
+};
+
+const _taskStatusColors = <Color>[
+  Color(0xFF3B82F6),
+  Color(0xFF22C55E),
+  Color(0xFFF59E0B),
+  Color(0xFFEF4444),
+  Color(0xFF8B5CF6),
+  Color(0xFF94A3B8),
+  Color(0xFF06B6D4),
+];
+
+List<_StatusSlice> _statusSlices(
+  Map<String, int> counts, {
+  Map<String, Color>? byKey,
+  List<Color>? byIndex,
+}) {
+  final slices = <_StatusSlice>[];
+  var index = 0;
+  for (final entry in counts.entries) {
+    final indexed = byIndex == null
+        ? null
+        : byIndex[index % byIndex.length];
+    slices.add(
+      _StatusSlice(
+        label: entry.key.replaceAll('_', ' '),
+        value: entry.value,
+        color: indexed ?? byKey?[entry.key] ?? AppTheme.colorAt(index),
+      ),
+    );
+    index += 1;
+  }
+  return slices;
+}
+
+class _StatusSlice {
+  const _StatusSlice({
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+
+  final String label;
+  final int value;
+  final Color color;
+}
+
+class _StatusChartCard extends StatelessWidget {
+  const _StatusChartCard({
+    required this.title,
+    required this.subtitle,
+    required this.slices,
+    required this.emptyMessage,
+  });
+
+  final String title;
+  final String subtitle;
+  final List<_StatusSlice> slices;
+  final String emptyMessage;
+
+  @override
+  Widget build(BuildContext context) {
+    final total = slices.fold<int>(0, (sum, slice) => sum + slice.value);
+    final maxValue = slices.fold<int>(
+      0,
+      (max, slice) => slice.value > max ? slice.value : max,
+    );
+    return Container(
+      margin: const EdgeInsets.only(bottom: AppTheme.gridGap),
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppTheme.border),
+        boxShadow: AppTheme.cardShadow,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title, style: AppTheme.titleMedium.copyWith(fontSize: 15)),
+          Text(subtitle, style: AppTheme.bodySmall.copyWith(color: AppTheme.muted)),
+          const SizedBox(height: 12),
+          if (slices.isEmpty || total == 0)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text(emptyMessage, style: const TextStyle(color: AppTheme.muted)),
+            )
+          else ...[
+            Center(
+              child: SizedBox(
+                width: 132,
+                height: 132,
+                child: CustomPaint(
+                  painter: _DonutPainter(slices),
+                  child: Center(
+                    child: Text('$total', style: AppTheme.titleMedium),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            for (final slice in slices)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: Row(
+                  children: [
+                    SizedBox(
+                      width: 108,
+                      child: Text(
+                        slice.label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTheme.bodySmall.copyWith(fontSize: 11),
+                      ),
+                    ),
+                    Expanded(
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(99),
+                        child: LinearProgressIndicator(
+                          value: maxValue == 0 ? 0 : slice.value / maxValue,
+                          minHeight: 7,
+                          backgroundColor: AppTheme.surface,
+                          color: slice.color,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    SizedBox(
+                      width: 24,
+                      child: Text(
+                        '${slice.value}',
+                        textAlign: TextAlign.end,
+                        style: AppTheme.bodySmall,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _DonutPainter extends CustomPainter {
+  _DonutPainter(this.slices);
+
+  final List<_StatusSlice> slices;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final total = slices.fold<int>(0, (sum, slice) => sum + slice.value);
+    if (total <= 0) return;
+    const stroke = 14.0;
+    final rect = Offset.zero & size;
+    final arc = rect.deflate(stroke / 2);
+    var start = -math.pi / 2;
+    final paint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = stroke
+      ..strokeCap = StrokeCap.butt;
+    final gap = slices.length > 1 ? 0.06 : 0.0;
+    for (final slice in slices) {
+      final sweep = math.max(0.0, (slice.value / total) * math.pi * 2 - gap);
+      paint.color = slice.color;
+      canvas.drawArc(arc, start, sweep, false, paint);
+      start += (slice.value / total) * math.pi * 2;
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _DonutPainter oldDelegate) =>
+      oldDelegate.slices != slices;
 }

@@ -64,6 +64,7 @@ class _InventoryHomeScreenState extends State<InventoryHomeScreen> {
   bool _exporting = false;
   String _sortBy = 'createdAt';
   String _sortOrder = 'desc';
+  int _motion = 0;
   static const _pageSize = 20;
 
   @override
@@ -152,12 +153,14 @@ class _InventoryHomeScreenState extends State<InventoryHomeScreen> {
         _items = res.items;
         _pagination = paged ? res.pagination : null;
         _loading = false;
+        _motion += 1;
       });
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() {
         _error = e.message;
         _loading = false;
+        _motion += 1;
       });
     }
   }
@@ -168,6 +171,7 @@ class _InventoryHomeScreenState extends State<InventoryHomeScreen> {
       extendBody: true,
       appBar: ModernAppBar(
         title: 'Inventory',
+        animateTitle: true,
         actions: [
           if (_view != 'stats')
             PressScale(
@@ -211,6 +215,10 @@ class _InventoryHomeScreenState extends State<InventoryHomeScreen> {
         children: [
           StaggeredEntrance(
             maxIndex: 2,
+            slide: 18,
+            itemMs: 380,
+            stepMs: 46,
+            scaleFrom: 0.98,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -302,7 +310,12 @@ class _InventoryHomeScreenState extends State<InventoryHomeScreen> {
           Expanded(
             child: StaggeredEntrance(
               active: !_loading,
-              replayToken: _view,
+              replayToken: _motion,
+              maxIndex: 6,
+              slide: 16,
+              itemMs: 380,
+              stepMs: 40,
+              scaleFrom: 0.97,
               child: RefreshIndicator(
                 onRefresh: _load,
                 child: _loading
@@ -455,6 +468,7 @@ class _ImrListScreenState extends State<ImrListScreen> {
   int _page = 1;
   String _sortBy = 'createdAt';
   String _sortOrder = 'desc';
+  int _motion = 0;
 
   bool get _hasFilters =>
       _inventoryType.isNotEmpty ||
@@ -536,18 +550,21 @@ class _ImrListScreenState extends State<ImrListScreen> {
         _items = res.items;
         _pagination = res.pagination;
         _loading = false;
+        _motion += 1;
       });
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() {
         _error = e.message;
         _loading = false;
+        _motion += 1;
       });
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _error = e.toString();
         _loading = false;
+        _motion += 1;
       });
     }
   }
@@ -874,110 +891,150 @@ class _ImrListScreenState extends State<ImrListScreen> {
     final pages = paginationTotalPages(_pagination);
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Issued material'),
+        title: const StaggeredEntrance(
+          maxIndex: 0,
+          slide: 12,
+          itemMs: 360,
+          scaleFrom: 0.98,
+          child: EntranceItem(index: 0, child: Text('Issued material')),
+        ),
         actions: [
-          SortMenuButton(
-            choices: const [
-              SortChoice(by: 'createdAt', order: 'desc', label: 'Newest'),
-              SortChoice(by: 'createdAt', order: 'asc', label: 'Oldest'),
-              SortChoice(by: 'issue_Date', order: 'desc', label: 'Issue date'),
-              SortChoice(
-                by: 'issueSlip_number',
-                order: 'asc',
-                label: 'Slip number',
-              ),
-            ],
-            sortBy: _sortBy,
-            sortOrder: _sortOrder,
-            onSelected: (by, order) {
-              setState(() {
-                _sortBy = by;
-                _sortOrder = order;
-                _page = 1;
-              });
-              _load();
-            },
-          ),
-          IconButton(
-            tooltip: 'Filters',
-            onPressed: _openFilters,
-            icon: Badge(
-              isLabelVisible: _hasFilters,
-              smallSize: 8,
-              child: const Icon(Icons.filter_list),
-            ),
-          ),
-          const WorkspaceSwitcherButton(),
-        ],
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () async {
-          await context.push('/inventory/imr/new');
-          if (mounted) _load();
-        },
-        child: const Icon(Icons.add),
-      ),
-      body: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Padding(
-            padding: AppTheme.searchPadding,
-            child: TextField(
-              decoration: const InputDecoration(
-                hintText: 'Search slip no, item, received by…',
-                prefixIcon: Icon(Icons.search),
-              ),
-              textInputAction: TextInputAction.search,
-              onSubmitted: (v) {
+          PressScale(
+            child: SortMenuButton(
+              choices: const [
+                SortChoice(by: 'createdAt', order: 'desc', label: 'Newest'),
+                SortChoice(by: 'createdAt', order: 'asc', label: 'Oldest'),
+                SortChoice(by: 'issue_Date', order: 'desc', label: 'Issue date'),
+                SortChoice(
+                  by: 'issueSlip_number',
+                  order: 'asc',
+                  label: 'Slip number',
+                ),
+              ],
+              sortBy: _sortBy,
+              sortOrder: _sortOrder,
+              onSelected: (by, order) {
                 setState(() {
-                  _search = v.trim();
+                  _sortBy = by;
+                  _sortOrder = order;
                   _page = 1;
                 });
                 _load();
               },
             ),
           ),
+          PressScale(
+            child: IconButton(
+              tooltip: 'Filters',
+              onPressed: _openFilters,
+              icon: Badge(
+                isLabelVisible: _hasFilters,
+                smallSize: 8,
+                child: const Icon(Icons.filter_list),
+              ),
+            ),
+          ),
+          const PressScale(child: WorkspaceSwitcherButton()),
+        ],
+      ),
+      floatingActionButton: PressScale(
+        child: FloatingActionButton(
+          onPressed: () async {
+            await context.push('/inventory/imr/new');
+            if (mounted) _load();
+          },
+          child: const Icon(Icons.add),
+        ),
+      ),
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          StaggeredEntrance(
+            maxIndex: 0,
+            slide: 18,
+            itemMs: 380,
+            scaleFrom: 0.98,
+            child: EntranceItem(
+              index: 0,
+              child: Padding(
+                padding: AppTheme.searchPadding,
+                child: TextField(
+                  decoration: const InputDecoration(
+                    hintText: 'Search slip no, item, received by…',
+                    prefixIcon: Icon(Icons.search),
+                  ),
+                  textInputAction: TextInputAction.search,
+                  onSubmitted: (v) {
+                    setState(() {
+                      _search = v.trim();
+                      _page = 1;
+                    });
+                    _load();
+                  },
+                ),
+              ),
+            ),
+          ),
           Expanded(
-            child: RefreshIndicator(
-              onRefresh: _load,
-              child: _loading
-                  ? const CenteredScrollLoader()
-                  : _error != null
-                  ? ListView(
-                      padding: AppTheme.formPadding,
-                      children: [ErrorBanner(message: _error!, onRetry: _load)],
-                    )
-                  : _items.isEmpty
-                  ? EmptyListBody(
-                      message: listEmptyMessage(
-                        noun: 'issue slips',
-                        search: _search,
-                        filterLabel: _hasFilters && _search.isEmpty
-                            ? 'selected filters'
-                            : null,
-                      ),
-                    )
-                  : ListView.separated(
+            child: StaggeredEntrance(
+              active: !_loading,
+              replayToken: _motion,
+              maxIndex: 6,
+              slide: 16,
+              itemMs: 380,
+              stepMs: 40,
+              scaleFrom: 0.97,
+              child: RefreshIndicator(
+                onRefresh: _load,
+                child: _loading
+                    ? const CenteredScrollLoader()
+                    : _error != null
+                    ? ListView(
+                        padding: AppTheme.formPadding,
+                        children: [
+                          EntranceItem(
+                            index: 0,
+                            child: ErrorBanner(message: _error!, onRetry: _load),
+                          ),
+                        ],
+                      )
+                    : _items.isEmpty
+                    ? EntranceItem(
+                        index: 0,
+                        child: EmptyListBody(
+                          message: listEmptyMessage(
+                            noun: 'issue slips',
+                            search: _search,
+                            filterLabel: _hasFilters && _search.isEmpty
+                                ? 'selected filters'
+                                : null,
+                          ),
+                        ),
+                      )
+                    : ListView.separated(
                       padding: AppTheme.formPadding,
                       itemCount: _items.length + 1,
                       separatorBuilder: (_, _) => const SizedBox(height: 8),
                       itemBuilder: (context, i) {
                         if (i == _items.length) {
-                          return ListPaginationRow(
-                            page: _page,
-                            totalPages: pages,
-                            onPrev: _page > 1
-                                ? () {
-                                    setState(() => _page -= 1);
-                                    _load();
-                                  }
-                                : null,
-                            onNext: _page < pages
-                                ? () {
-                                    setState(() => _page += 1);
-                                    _load();
-                                  }
-                                : null,
+                          return EntranceItem(
+                            index: 6,
+                            child: ListPaginationRow(
+                              page: _page,
+                              totalPages: pages,
+                              onPrev: _page > 1
+                                  ? () {
+                                      setState(() => _page -= 1);
+                                      _load();
+                                    }
+                                  : null,
+                              onNext: _page < pages
+                                  ? () {
+                                      setState(() => _page += 1);
+                                      _load();
+                                    }
+                                  : null,
+                            ),
                           );
                         }
                         final row = _items[i];
@@ -1000,7 +1057,11 @@ class _ImrListScreenState extends State<ImrListScreen> {
                           row['inventoryType']?.toString() ?? '',
                           formatDate(row['issue_Date']),
                         ].where((part) => part.trim().isNotEmpty).join(' · ');
-                        return Card(
+                        return EntranceItem(
+                          index: i,
+                          child: PressScale(
+                            enabled: id != null,
+                            child: Card(
                           child: ListTile(
                             title: Text(
                               row['issueSlip_number']?.toString() ?? 'Slip',
@@ -1022,9 +1083,12 @@ class _ImrListScreenState extends State<ImrListScreen> {
                                     if (changed == true && mounted) _load();
                                   },
                           ),
+                            ),
+                          ),
                         );
                       },
                     ),
+              ),
             ),
           ),
         ],
@@ -2441,40 +2505,54 @@ class _TransferListScreenState extends State<TransferListScreen> {
   Widget build(BuildContext context) {
     final pages = paginationTotalPages(_pagination);
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Intersite transfers'),
+      appBar: ModernAppBar(
+        title: 'Intersite transfers',
         actions: [
-          SortMenuButton(
-            choices: const [
-              SortChoice(by: 'createdAt', order: 'desc', label: 'Newest'),
-              SortChoice(by: 'createdAt', order: 'asc', label: 'Oldest'),
-              SortChoice(by: 'status', order: 'asc', label: 'Status'),
-            ],
-            sortBy: _sortBy,
-            sortOrder: _sortOrder,
-            onSelected: (by, order) {
-              setState(() {
-                _sortBy = by;
-                _sortOrder = order;
-                _page = 1;
-              });
-              _load();
-            },
+          PressScale(
+            child: SortMenuButton(
+              choices: const [
+                SortChoice(by: 'createdAt', order: 'desc', label: 'Newest'),
+                SortChoice(by: 'createdAt', order: 'asc', label: 'Oldest'),
+                SortChoice(by: 'status', order: 'asc', label: 'Status'),
+              ],
+              sortBy: _sortBy,
+              sortOrder: _sortOrder,
+              onSelected: (by, order) {
+                setState(() {
+                  _sortBy = by;
+                  _sortOrder = order;
+                  _page = 1;
+                });
+                _load();
+              },
+            ),
           ),
-          const WorkspaceSwitcherButton(),
+          const PressScale(child: WorkspaceSwitcherButton()),
         ],
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () async {
-          await context.push('/inventory/transfers/new');
-          if (mounted) _load();
-        },
-        child: const Icon(Icons.add),
+      floatingActionButton: PressScale(
+        child: FloatingActionButton(
+          onPressed: () async {
+            await context.push('/inventory/transfers/new');
+            if (mounted) _load();
+          },
+          child: const Icon(Icons.add),
+        ),
       ),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Padding(
+          StaggeredEntrance(
+            maxIndex: 2,
+            slide: 18,
+            itemMs: 380,
+            scaleFrom: 0.98,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+          EntranceItem(
+            index: 0,
+            child: Padding(
             padding: AppTheme.searchPadding,
             child: TextField(
               controller: _searchCtrl,
@@ -2486,7 +2564,10 @@ class _TransferListScreenState extends State<TransferListScreen> {
               onSubmitted: (v) => _applyAndReload(() => _search = v.trim()),
             ),
           ),
-          SingleChildScrollView(
+          ),
+          EntranceItem(
+            index: 1,
+            child: SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             padding: AppTheme.chipRowPadding,
             child: Row(
@@ -2494,16 +2575,21 @@ class _TransferListScreenState extends State<TransferListScreen> {
                 for (final s in _statuses)
                   Padding(
                     padding: const EdgeInsets.only(right: 8),
-                    child: ChoiceChip(
+                    child: PressScale(
+                      child: ChoiceChip(
                       label: Text(s.isEmpty ? 'All' : s),
                       selected: _status == s,
                       onSelected: (_) => _applyAndReload(() => _status = s),
+                    ),
                     ),
                   ),
               ],
             ),
           ),
-          SingleChildScrollView(
+          ),
+          EntranceItem(
+            index: 2,
+            child: SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
             child: Row(
@@ -2511,102 +2597,135 @@ class _TransferListScreenState extends State<TransferListScreen> {
                 for (final t in _types)
                   Padding(
                     padding: const EdgeInsets.only(right: 8),
-                    child: ChoiceChip(
-                      label: Text(t.isEmpty ? 'All types' : t),
-                      selected: _type == t,
-                      onSelected: (_) => _applyAndReload(() => _type = t),
+                    child: PressScale(
+                      child: ChoiceChip(
+                        label: Text(t.isEmpty ? 'All types' : t),
+                        selected: _type == t,
+                        onSelected: (_) => _applyAndReload(() => _type = t),
+                      ),
                     ),
                   ),
-                FilterChip(
-                  label: Text(_origin == null ? 'Origin site' : _originLabel),
-                  selected: _origin != null,
-                  onSelected: (_) {
-                    if (_origin != null) {
-                      _applyAndReload(() {
-                        _origin = null;
-                        _originLabel = '';
-                      });
-                    } else {
-                      _pickSite(origin: true);
-                    }
-                  },
-                ),
-                const SizedBox(width: 8),
-                FilterChip(
-                  label: Text(_dest == null ? 'Destination site' : _destLabel),
-                  selected: _dest != null,
-                  onSelected: (_) {
-                    if (_dest != null) {
-                      _applyAndReload(() {
-                        _dest = null;
-                        _destLabel = '';
-                      });
-                    } else {
-                      _pickSite(origin: false);
-                    }
-                  },
-                ),
-                const SizedBox(width: 8),
-                FilterChip(
-                  label: Text(
-                    _from == null
-                        ? 'From date'
-                        : formatDate(_from!.toIso8601String()),
+                PressScale(
+                  child: FilterChip(
+                    label: Text(_origin == null ? 'Origin site' : _originLabel),
+                    selected: _origin != null,
+                    onSelected: (_) {
+                      if (_origin != null) {
+                        _applyAndReload(() {
+                          _origin = null;
+                          _originLabel = '';
+                        });
+                      } else {
+                        _pickSite(origin: true);
+                      }
+                    },
                   ),
-                  selected: _from != null,
-                  onSelected: (_) {
-                    if (_from != null) {
-                      _applyAndReload(() => _from = null);
-                    } else {
-                      _pickDate(from: true);
-                    }
-                  },
                 ),
                 const SizedBox(width: 8),
-                FilterChip(
-                  label: Text(
-                    _to == null
-                        ? 'To date'
-                        : formatDate(_to!.toIso8601String()),
+                PressScale(
+                  child: FilterChip(
+                    label: Text(
+                      _dest == null ? 'Destination site' : _destLabel,
+                    ),
+                    selected: _dest != null,
+                    onSelected: (_) {
+                      if (_dest != null) {
+                        _applyAndReload(() {
+                          _dest = null;
+                          _destLabel = '';
+                        });
+                      } else {
+                        _pickSite(origin: false);
+                      }
+                    },
                   ),
-                  selected: _to != null,
-                  onSelected: (_) {
-                    if (_to != null) {
-                      _applyAndReload(() => _to = null);
-                    } else {
-                      _pickDate(from: false);
-                    }
-                  },
+                ),
+                const SizedBox(width: 8),
+                PressScale(
+                  child: FilterChip(
+                    label: Text(
+                      _from == null
+                          ? 'From date'
+                          : formatDate(_from!.toIso8601String()),
+                    ),
+                    selected: _from != null,
+                    onSelected: (_) {
+                      if (_from != null) {
+                        _applyAndReload(() => _from = null);
+                      } else {
+                        _pickDate(from: true);
+                      }
+                    },
+                  ),
+                ),
+                const SizedBox(width: 8),
+                PressScale(
+                  child: FilterChip(
+                    label: Text(
+                      _to == null
+                          ? 'To date'
+                          : formatDate(_to!.toIso8601String()),
+                    ),
+                    selected: _to != null,
+                    onSelected: (_) {
+                      if (_to != null) {
+                        _applyAndReload(() => _to = null);
+                      } else {
+                        _pickDate(from: false);
+                      }
+                    },
+                  ),
                 ),
                 if (_hasExtraFilters) ...[
                   const SizedBox(width: 8),
-                  TextButton(
-                    onPressed: () => _applyAndReload(() {
-                      _origin = null;
-                      _originLabel = '';
-                      _dest = null;
-                      _destLabel = '';
-                      _from = null;
-                      _to = null;
-                    }),
-                    child: const Text('Clear'),
+                  PressScale(
+                    child: TextButton(
+                      onPressed: () => _applyAndReload(() {
+                        _origin = null;
+                        _originLabel = '';
+                        _dest = null;
+                        _destLabel = '';
+                        _from = null;
+                        _to = null;
+                      }),
+                      child: const Text('Clear'),
+                    ),
                   ),
                 ],
               ],
             ),
           ),
+          ),
+              ],
+            ),
+          ),
           Expanded(
-            child: RefreshIndicator(
+            child: StaggeredEntrance(
+              active: !_loading,
+              replayToken: '$_page|$_status|$_type|$_search|${_items.length}',
+              maxIndex: 6,
+              slide: 16,
+              itemMs: 380,
+              stepMs: 40,
+              scaleFrom: 0.97,
+              child: RefreshIndicator(
               onRefresh: _load,
               child: _loading
                   ? const CenteredScrollLoader()
                   : _error != null
                   ? ListView(
                       padding: AppTheme.formPadding,
-                      children: [ErrorBanner(message: _error!, onRetry: _load)],
+                      children: [
+                        EntranceItem(
+                          index: 0,
+                          child: ErrorBanner(message: _error!, onRetry: _load),
+                        ),
+                      ],
                     )
                   : _items.isEmpty
-                  ? EmptyListBody(
+                  ? EntranceItem(
+                      index: 0,
+                      child: EmptyListBody(
                       message: listEmptyMessage(
                         noun: 'transfers',
                         search: _search,
@@ -2614,6 +2733,7 @@ class _TransferListScreenState extends State<TransferListScreen> {
                             ? null
                             : _emptyFilterLabel,
                       ),
+                    ),
                     )
                   : ListView.separated(
                       padding: AppTheme.formPadding,
@@ -2621,7 +2741,9 @@ class _TransferListScreenState extends State<TransferListScreen> {
                       separatorBuilder: (_, _) => const SizedBox(height: 8),
                       itemBuilder: (context, i) {
                         if (i == _items.length) {
-                          return ListPaginationRow(
+                          return EntranceItem(
+                            index: 6,
+                            child: ListPaginationRow(
                             page: _page,
                             totalPages: pages,
                             onPrev: _page > 1
@@ -2636,6 +2758,7 @@ class _TransferListScreenState extends State<TransferListScreen> {
                                     _load();
                                   }
                                 : null,
+                          ),
                           );
                         }
                         final row = _items[i];
@@ -2645,7 +2768,10 @@ class _TransferListScreenState extends State<TransferListScreen> {
                           'createdAt',
                           'created_at',
                         ]);
-                        return Card(
+                        return EntranceItem(
+                          index: i,
+                          child: PressScale(
+                            child: Card(
                           child: ListTile(
                             isThreeLine: true,
                             title: Row(
@@ -2687,9 +2813,12 @@ class _TransferListScreenState extends State<TransferListScreen> {
                               if (changed == true && mounted) _load();
                             },
                           ),
+                            ),
+                          ),
                         );
                       },
                     ),
+              ),
             ),
           ),
         ],
@@ -3886,81 +4015,125 @@ class _ScrapListScreenState extends State<ScrapListScreen> {
     final visible = _items.where(_matchesScrap).toList();
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Scrap'),
+        title: const StaggeredEntrance(
+          maxIndex: 0,
+          slide: 12,
+          itemMs: 360,
+          scaleFrom: 0.98,
+          child: EntranceItem(index: 0, child: Text('Scrap')),
+        ),
         actions: [
-          SortMenuButton(
-            choices: const [
-              SortChoice(by: 'createdAt', order: 'desc', label: 'Newest'),
-              SortChoice(by: 'createdAt', order: 'asc', label: 'Oldest'),
-            ],
-            sortBy: _sortBy,
-            sortOrder: _sortOrder,
-            onSelected: (by, order) {
-              setState(() {
-                _sortBy = by;
-                _sortOrder = order;
-                _page = 1;
-              });
-              _load();
-            },
-          ),
-          const WorkspaceSwitcherButton(),
-        ],
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () async {
-          await context.push('/inventory/scrap/new');
-          if (mounted) _load();
-        },
-        child: const Icon(Icons.add),
-      ),
-      body: Column(
-        children: [
-          Padding(
-            padding: AppTheme.searchPadding,
-            child: TextField(
-              decoration: const InputDecoration(
-                hintText: 'Search number, site or item…',
-                prefixIcon: Icon(Icons.search),
-              ),
-              onSubmitted: (v) {
+          PressScale(
+            child: SortMenuButton(
+              choices: const [
+                SortChoice(by: 'createdAt', order: 'desc', label: 'Newest'),
+                SortChoice(by: 'createdAt', order: 'asc', label: 'Oldest'),
+              ],
+              sortBy: _sortBy,
+              sortOrder: _sortOrder,
+              onSelected: (by, order) {
                 setState(() {
-                  _search = v.trim();
+                  _sortBy = by;
+                  _sortOrder = order;
                   _page = 1;
                 });
                 _load();
               },
             ),
           ),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            padding: AppTheme.chipRowPadding,
-            child: Row(
+          const PressScale(child: WorkspaceSwitcherButton()),
+        ],
+      ),
+      floatingActionButton: PressScale(
+        child: FloatingActionButton(
+          onPressed: () async {
+            await context.push('/inventory/scrap/new');
+            if (mounted) _load();
+          },
+          child: const Icon(Icons.add),
+        ),
+      ),
+      body: Column(
+        children: [
+          StaggeredEntrance(
+            maxIndex: 1,
+            slide: 18,
+            itemMs: 380,
+            scaleFrom: 0.98,
+            child: Column(
               children: [
-                FilterChip(
-                  label: Text(_siteId == null ? 'Site' : _siteLabel),
-                  selected: _siteId != null,
-                  onSelected: (_) => _pickSite(),
+                EntranceItem(
+                  index: 0,
+                  child: Padding(
+                    padding: AppTheme.searchPadding,
+                    child: TextField(
+                      decoration: const InputDecoration(
+                        hintText: 'Search number, site or item…',
+                        prefixIcon: Icon(Icons.search),
+                      ),
+                      onSubmitted: (v) {
+                        setState(() {
+                          _search = v.trim();
+                          _page = 1;
+                        });
+                        _load();
+                      },
+                    ),
+                  ),
+                ),
+                EntranceItem(
+                  index: 1,
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    padding: AppTheme.chipRowPadding,
+                    child: Row(
+                      children: [
+                        PressScale(
+                          child: FilterChip(
+                            label: Text(_siteId == null ? 'Site' : _siteLabel),
+                            selected: _siteId != null,
+                            onSelected: (_) => _pickSite(),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
               ],
             ),
           ),
           Expanded(
-            child: RefreshIndicator(
+            child: StaggeredEntrance(
+              active: !_loading,
+              replayToken: '$_page|$_search|$_siteId|${visible.length}',
+              maxIndex: 6,
+              slide: 16,
+              itemMs: 380,
+              stepMs: 40,
+              scaleFrom: 0.97,
+              child: RefreshIndicator(
               onRefresh: _load,
               child: _loading
                   ? const CenteredScrollLoader()
                   : _error != null
                   ? ListView(
                       padding: AppTheme.formPadding,
-                      children: [ErrorBanner(message: _error!, onRetry: _load)],
+                      children: [
+                        EntranceItem(
+                          index: 0,
+                          child: ErrorBanner(message: _error!, onRetry: _load),
+                        ),
+                      ],
                     )
                   : visible.isEmpty
-                  ? EmptyListBody(
+                  ? EntranceItem(
+                      index: 0,
+                      child: EmptyListBody(
                       message: listEmptyMessage(
                         noun: 'scrap records',
                         search: _search,
                       ),
+                    ),
                     )
                   : ListView.separated(
                       padding: AppTheme.formPadding,
@@ -3968,7 +4141,9 @@ class _ScrapListScreenState extends State<ScrapListScreen> {
                       separatorBuilder: (_, _) => const SizedBox(height: 8),
                       itemBuilder: (context, i) {
                         if (i == visible.length) {
-                          return ListPaginationRow(
+                          return EntranceItem(
+                            index: 6,
+                            child: ListPaginationRow(
                             page: _page,
                             totalPages: pages,
                             onPrev: _page > 1
@@ -3983,11 +4158,16 @@ class _ScrapListScreenState extends State<ScrapListScreen> {
                                     _load();
                                   }
                                 : null,
+                          ),
                           );
                         }
                         final row = visible[i];
                         final id = idOf(row);
-                        return Card(
+                        return EntranceItem(
+                          index: i,
+                          child: PressScale(
+                            enabled: id != null,
+                            child: Card(
                           child: ListTile(
                             title: Row(
                               children: [
@@ -4019,9 +4199,12 @@ class _ScrapListScreenState extends State<ScrapListScreen> {
                                     if (changed == true && mounted) _load();
                                   },
                           ),
+                            ),
+                          ),
                         );
                       },
                     ),
+              ),
             ),
           ),
         ],

@@ -26,6 +26,9 @@ class ModuleEntitlementsEditor extends StatelessWidget {
     this.taskSteps = 0,
     this.taskStep1 = '',
     this.taskStep2 = '',
+    this.dprSteps = 0,
+    this.dprStep1 = '',
+    this.dprStep2 = '',
     this.onApprovalChanged,
     this.editableModuleKeys,
   });
@@ -48,6 +51,9 @@ class ModuleEntitlementsEditor extends StatelessWidget {
   final int taskSteps;
   final String taskStep1;
   final String taskStep2;
+  final int dprSteps;
+  final String dprStep1;
+  final String dprStep2;
   final void Function({
     int? rrSteps,
     String? rrStep1,
@@ -58,6 +64,9 @@ class ModuleEntitlementsEditor extends StatelessWidget {
     int? taskSteps,
     String? taskStep1,
     String? taskStep2,
+    int? dprSteps,
+    String? dprStep1,
+    String? dprStep2,
   })? onApprovalChanged;
 
   bool get _procurementOn {
@@ -112,6 +121,9 @@ class ModuleEntitlementsEditor extends StatelessWidget {
                     taskSteps: 0,
                     taskStep1: '',
                     taskStep2: '',
+                    dprSteps: 0,
+                    dprStep1: '',
+                    dprStep2: '',
                   );
                 }
               }
@@ -170,7 +182,7 @@ class ModuleEntitlementsEditor extends StatelessWidget {
             ),
             const SizedBox(height: 8),
           ],
-          if (_pmOn)
+          if (_pmOn) ...[
             _ApprovalBlock(
               title: 'Task progress approval',
               steps: taskSteps,
@@ -185,6 +197,22 @@ class ModuleEntitlementsEditor extends StatelessWidget {
                 taskStep2: s2,
               ),
             ),
+            const SizedBox(height: 8),
+            _ApprovalBlock(
+              title: 'DPR approval',
+              steps: dprSteps,
+              step1: dprStep1,
+              step2: dprStep2,
+              enabled: enabled,
+              mode: approverMode,
+              roles: roles,
+              onChanged: (steps, s1, s2) => onApprovalChanged?.call(
+                dprSteps: steps,
+                dprStep1: s1,
+                dprStep2: s2,
+              ),
+            ),
+          ],
         ],
       ],
     );

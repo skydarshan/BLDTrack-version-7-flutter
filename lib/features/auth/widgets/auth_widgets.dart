@@ -31,50 +31,7 @@ class AuthScaffold extends StatelessWidget {
     final column = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _slot(
-          0,
-          Row(
-            children: [
-              Container(
-                width: 52,
-                height: 52,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.2),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.35),
-                  ),
-                ),
-                child: const Icon(
-                  Icons.apartment_rounded,
-                  color: Colors.white,
-                  size: 28,
-                ),
-              ),
-              const SizedBox(width: 14),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'BldTrack',
-                    style: AppTheme.headlineSmall.copyWith(
-                      color: Colors.white,
-                      fontSize: 22,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    'Build smarter',
-                    style: AppTheme.bodySmall.copyWith(
-                      color: Colors.white.withValues(alpha: 0.75),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
+        _slot(0, const BldTrackLogo()),
         const SizedBox(height: 16),
         _slot(
           1,
@@ -141,6 +98,73 @@ class AuthScaffold extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Same mark used on the login screen: glass tile, building icon, wordmark.
+class BldTrackLogo extends StatelessWidget {
+  const BldTrackLogo({
+    super.key,
+    this.boxSize = 52,
+    this.iconSize = 28,
+    this.radius = 16,
+    this.titleSize = 22,
+    this.tagSize = 13,
+    this.gap = 14,
+  });
+
+  final double boxSize;
+  final double iconSize;
+  final double radius;
+  final double titleSize;
+  final double tagSize;
+  final double gap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: boxSize,
+          height: boxSize,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.2),
+            borderRadius: BorderRadius.circular(radius),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.35),
+            ),
+          ),
+          child: Icon(
+            Icons.apartment_rounded,
+            color: Colors.white,
+            size: iconSize,
+          ),
+        ),
+        SizedBox(width: gap),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'BldTrack',
+              style: AppTheme.headlineSmall.copyWith(
+                color: Colors.white,
+                fontSize: titleSize,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              'Build smarter',
+              style: AppTheme.bodySmall.copyWith(
+                color: Colors.white.withValues(alpha: 0.75),
+                fontSize: tagSize,
+              ),
+            ),
+          ],
+        ),
+      ],
     );
   }
 }

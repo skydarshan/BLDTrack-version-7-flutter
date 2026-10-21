@@ -168,7 +168,7 @@ class SettingsHubScreen extends StatelessWidget {
                     color: AppTheme.colorAt(4),
                   ),
                   title: const Text('App Settings'),
-                  subtitle: const Text('Notification email & preferences'),
+                  subtitle: const Text('SMTP and email templates'),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () => context.push('/pms/settings/app'),
                 ),

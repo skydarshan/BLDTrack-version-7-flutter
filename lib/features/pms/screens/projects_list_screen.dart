@@ -9,6 +9,8 @@ import '../../../core/network/api_helpers.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/sort_menu.dart';
 import '../../../core/theme/modern_widgets.dart';
+import '../../../core/widgets/motion.dart';
+import '../../app/app_shell.dart';
 import '../services/pms_services.dart';
 import '../utils/pms_constants.dart';
 import '../utils/site_options.dart';
@@ -41,6 +43,7 @@ class _ProjectsListScreenState extends State<ProjectsListScreen> {
   String _sortBy = 'createdAt';
   String _sortOrder = 'desc';
   bool _hasMore = false;
+  int _motion = 0;
 
   @override
   void initState() {
@@ -123,6 +126,7 @@ class _ProjectsListScreenState extends State<ProjectsListScreen> {
         _items = reset ? res.items : [..._items, ...res.items];
         _hasMore = totalPages is num && _page < totalPages;
         _loading = false;
+        if (reset) _motion += 1;
       });
     } on ApiException catch (e) {
       if (!mounted || gen != _loadGen) return;
@@ -147,7 +151,10 @@ class _ProjectsListScreenState extends State<ProjectsListScreen> {
     });
   }
 
-  Future<void> _archive(Map<String, dynamic> project, {required bool archive}) async {
+  Future<void> _archive(
+    Map<String, dynamic> project, {
+    required bool archive,
+  }) async {
     final id = idOf(project);
     if (id == null) return;
     final ok = await confirmAction(
@@ -239,89 +246,129 @@ class _ProjectsListScreenState extends State<ProjectsListScreen> {
       extendBody: true,
       appBar: ModernAppBar(
         title: 'Projects',
+        animateTitle: true,
         actions: [
-          SortMenuButton(
-            choices: const [
-              SortChoice(by: 'createdAt', order: 'desc', label: 'Newest'),
-              SortChoice(by: 'createdAt', order: 'asc', label: 'Oldest'),
-              SortChoice(by: 'project_name', order: 'asc', label: 'Name A–Z'),
-              SortChoice(by: 'project_name', order: 'desc', label: 'Name Z–A'),
-              SortChoice(by: 'status', order: 'asc', label: 'Status'),
-            ],
-            sortBy: _sortBy,
-            sortOrder: _sortOrder,
-            onSelected: (by, order) {
-              setState(() {
-                _sortBy = by;
-                _sortOrder = order;
-              });
-              _load(reset: true);
-            },
+          PressScale(
+            child: SortMenuButton(
+              choices: const [
+                SortChoice(by: 'createdAt', order: 'desc', label: 'Newest'),
+                SortChoice(by: 'createdAt', order: 'asc', label: 'Oldest'),
+                SortChoice(by: 'project_name', order: 'asc', label: 'Name A–Z'),
+                SortChoice(
+                  by: 'project_name',
+                  order: 'desc',
+                  label: 'Name Z–A',
+                ),
+                SortChoice(by: 'status', order: 'asc', label: 'Status'),
+              ],
+              sortBy: _sortBy,
+              sortOrder: _sortOrder,
+              onSelected: (by, order) {
+                setState(() {
+                  _sortBy = by;
+                  _sortOrder = order;
+                });
+                _load(reset: true);
+              },
+            ),
           ),
+          const PressScale(child: WorkspaceSwitcherButton()),
         ],
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () async {
-          final created = await context.push<bool>('/pms/projects/new');
-          if (created == true && mounted) _load(reset: true);
-        },
-        child: const Icon(Icons.add),
+      floatingActionButton: PressScale(
+        child: FloatingActionButton(
+          onPressed: () async {
+            final created = await context.push<bool>('/pms/projects/new');
+            if (created == true && mounted) _load(reset: true);
+          },
+          child: const Icon(Icons.add),
+        ),
       ),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Padding(
-            padding: AppTheme.searchPadding,
-            child: TextField(
-              controller: _searchCtrl,
-              decoration: const InputDecoration(
-                hintText: 'Search name, code or site…',
-                prefixIcon: Icon(Icons.search),
-              ),
-              onChanged: _onSearchChanged,
-            ),
-          ),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            padding: AppTheme.chipRowPadding,
-            child: Row(
+          StaggeredEntrance(
+            maxIndex: 1,
+            slide: 18,
+            itemMs: 380,
+            stepMs: 46,
+            scaleFrom: 0.98,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                FilterChip(
-                  label: Text(_siteId == null ? 'Site' : _siteLabel),
-                  selected: _siteId != null,
-                  onSelected: (_) => _pickSite(),
-                ),
-                const SizedBox(width: 8),
-                FilterChip(
-                  label: Text(
-                    _status == null
-                        ? 'Status'
-                        : PmsConstants.labelFor(PmsConstants.projectStatuses, _status),
-                  ),
-                  selected: _status != null,
-                  onSelected: (_) => _pickFilter(
-                    title: 'Status',
-                    options: [
-                      ...PmsConstants.projectStatuses,
-                      ('archived', 'Archived'),
-                    ],
-                    current: _status,
-                    onPicked: (v) => setState(() => _status = v),
+                EntranceItem(
+                  index: 0,
+                  child: Padding(
+                    padding: AppTheme.searchPadding,
+                    child: TextField(
+                      controller: _searchCtrl,
+                      decoration: const InputDecoration(
+                        hintText: 'Search name, code or site…',
+                        prefixIcon: Icon(Icons.search),
+                      ),
+                      onChanged: _onSearchChanged,
+                    ),
                   ),
                 ),
-                const SizedBox(width: 8),
-                FilterChip(
-                  label: Text(
-                    _priority == null
-                        ? 'Priority'
-                        : PmsConstants.labelFor(PmsConstants.priorities, _priority),
-                  ),
-                  selected: _priority != null,
-                  onSelected: (_) => _pickFilter(
-                    title: 'Priority',
-                    options: PmsConstants.priorities,
-                    current: _priority,
-                    onPicked: (v) => setState(() => _priority = v),
+                EntranceItem(
+                  index: 1,
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    padding: AppTheme.chipRowPadding,
+                    child: Row(
+                      children: [
+                        PressScale(
+                          child: FilterChip(
+                            label: Text(_siteId == null ? 'Site' : _siteLabel),
+                            selected: _siteId != null,
+                            onSelected: (_) => _pickSite(),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        PressScale(
+                          child: FilterChip(
+                            label: Text(
+                              _status == null
+                                  ? 'Status'
+                                  : PmsConstants.labelFor(
+                                      PmsConstants.projectStatuses,
+                                      _status,
+                                    ),
+                            ),
+                            selected: _status != null,
+                            onSelected: (_) => _pickFilter(
+                              title: 'Status',
+                              options: [
+                                ...PmsConstants.projectStatuses,
+                                ('archived', 'Archived'),
+                              ],
+                              current: _status,
+                              onPicked: (v) => setState(() => _status = v),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        PressScale(
+                          child: FilterChip(
+                            label: Text(
+                              _priority == null
+                                  ? 'Priority'
+                                  : PmsConstants.labelFor(
+                                      PmsConstants.priorities,
+                                      _priority,
+                                    ),
+                            ),
+                            selected: _priority != null,
+                            onSelected: (_) => _pickFilter(
+                              title: 'Priority',
+                              options: PmsConstants.priorities,
+                              current: _priority,
+                              onPicked: (v) => setState(() => _priority = v),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ],
@@ -330,103 +377,141 @@ class _ProjectsListScreenState extends State<ProjectsListScreen> {
           if (_error != null)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: ErrorBanner(message: _error!, onRetry: () => _load(reset: true)),
+              child: SoftAppear(
+                child: ErrorBanner(
+                  message: _error!,
+                  onRetry: () => _load(reset: true),
+                ),
+              ),
             ),
           Expanded(
-            child: RefreshIndicator(
-              onRefresh: () => _load(reset: true),
-              child: _loading && _items.isEmpty
-                  ? const CenteredScrollLoader()
-                  : _items.isEmpty
-                      ? EmptyListBody(
+            child: StaggeredEntrance(
+              active: !(_loading && _items.isEmpty),
+              replayToken: _motion,
+              maxIndex: 6,
+              slide: 16,
+              itemMs: 380,
+              stepMs: 40,
+              scaleFrom: 0.97,
+              child: RefreshIndicator(
+                onRefresh: () => _load(reset: true),
+                child: _loading && _items.isEmpty
+                    ? const CenteredScrollLoader()
+                    : _items.isEmpty
+                    ? EntranceItem(
+                        index: 0,
+                        child: EmptyListBody(
                           message: _search.trim().isEmpty && _siteId == null
                               ? 'No projects found'
                               : 'No projects match this search',
-                        )
-                      : ListView.builder(
-                          padding: AppTheme.listPadding,
-                          itemCount: _items.length + (_hasMore ? 1 : 0),
-                          itemBuilder: (context, i) {
-                            if (i >= _items.length) {
-                              return TextButton(
-                                onPressed: () {
-                                  _page += 1;
-                                  _load();
-                                },
-                                child: const Text('Load more'),
-                              );
-                            }
-                            final p = _items[i];
-                            final id = idOf(p);
-                            final archived = p['status']?.toString() == 'archived';
-                            return Container(
-                              margin: const EdgeInsets.only(bottom: 8),
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(18),
-                                color: Colors.white,
-                                boxShadow: AppTheme.cardShadow,
-                              ),
-                              child: ListTile(
-                                title: Text(
-                                  p['project_name']?.toString() ?? 'Project',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
+                        ),
+                      )
+                    : ListView.builder(
+                        padding: AppTheme.listPadding,
+                        itemCount: _items.length + (_hasMore ? 1 : 0),
+                        itemBuilder: (context, i) {
+                          if (i >= _items.length) {
+                            return EntranceItem(
+                              index: 6,
+                              child: PressScale(
+                                child: TextButton(
+                                  onPressed: () {
+                                    _page += 1;
+                                    _load();
+                                  },
+                                  child: const Text('Load more'),
                                 ),
-                                subtitle: Text(
-                                  [
-                                    if ((p['code']?.toString() ?? '').isNotEmpty) p['code'],
-                                    labelOf(p['site']),
-                                    PmsConstants.labelFor(
-                                      PmsConstants.priorities,
-                                      p['priority']?.toString(),
-                                    ),
-                                  ].whereType<String>().where((s) => s != '—').join(' · '),
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                                trailing: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    StatusChip(status: p['status']?.toString()),
-                                    PopupMenuButton<String>(
-                                      onSelected: (v) {
-                                        if (v == 'archive') {
-                                          _archive(p, archive: true);
-                                        } else if (v == 'unarchive') {
-                                          _archive(p, archive: false);
-                                        } else if (v == 'delete') {
-                                          _delete(p);
-                                        }
-                                      },
-                                      itemBuilder: (_) => [
-                                        if (archived)
-                                          const PopupMenuItem(
-                                            value: 'unarchive',
-                                            child: Text('Unarchive'),
-                                          )
-                                        else
-                                          const PopupMenuItem(
-                                            value: 'archive',
-                                            child: Text('Archive'),
-                                          ),
-                                        const PopupMenuItem(
-                                          value: 'delete',
-                                          child: Text(
-                                            'Delete',
-                                            style: TextStyle(color: AppTheme.danger),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ],
-                                ),
-                                onTap: id == null
-                                    ? null
-                                    : () => context.push('/pms/projects/$id'),
                               ),
                             );
-                          },
-                        ),
+                          }
+                          final p = _items[i];
+                          final id = idOf(p);
+                          final archived =
+                              p['status']?.toString() == 'archived';
+                          return EntranceItem(
+                            index: i,
+                            child: PressScale(
+                              enabled: id != null,
+                              child: Container(
+                                margin: const EdgeInsets.only(bottom: 8),
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(18),
+                                  color: Colors.white,
+                                  boxShadow: AppTheme.cardShadow,
+                                ),
+                                child: ListTile(
+                                  title: Text(
+                                    p['project_name']?.toString() ?? 'Project',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  subtitle: Text(
+                                    [
+                                          if ((p['code']?.toString() ?? '')
+                                              .isNotEmpty)
+                                            p['code'],
+                                          labelOf(p['site']),
+                                          PmsConstants.labelFor(
+                                            PmsConstants.priorities,
+                                            p['priority']?.toString(),
+                                          ),
+                                        ]
+                                        .whereType<String>()
+                                        .where((s) => s != '—')
+                                        .join(' · '),
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  trailing: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      StatusChip(
+                                        status: p['status']?.toString(),
+                                      ),
+                                      PopupMenuButton<String>(
+                                        onSelected: (v) {
+                                          if (v == 'archive') {
+                                            _archive(p, archive: true);
+                                          } else if (v == 'unarchive') {
+                                            _archive(p, archive: false);
+                                          } else if (v == 'delete') {
+                                            _delete(p);
+                                          }
+                                        },
+                                        itemBuilder: (_) => [
+                                          if (archived)
+                                            const PopupMenuItem(
+                                              value: 'unarchive',
+                                              child: Text('Unarchive'),
+                                            )
+                                          else
+                                            const PopupMenuItem(
+                                              value: 'archive',
+                                              child: Text('Archive'),
+                                            ),
+                                          const PopupMenuItem(
+                                            value: 'delete',
+                                            child: Text(
+                                              'Delete',
+                                              style: TextStyle(
+                                                color: AppTheme.danger,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                  onTap: id == null
+                                      ? null
+                                      : () => context.push('/pms/projects/$id'),
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+              ),
             ),
           ),
         ],

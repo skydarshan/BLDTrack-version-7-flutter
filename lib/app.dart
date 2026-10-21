@@ -6,6 +6,7 @@ import 'core/network/api_client.dart';
 import 'core/storage/token_storage.dart';
 import 'core/theme/app_theme.dart';
 import 'features/app/app_services.dart';
+import 'features/app/splash_screen.dart';
 import 'features/auth/providers/auth_provider.dart';
 import 'features/auth/services/auth_api.dart';
 import 'features/org/org_session.dart';
@@ -83,6 +84,9 @@ class _AvidusAppState extends State<AvidusApp> {
         debugShowCheckedModeBanner: false,
         theme: AppTheme.light(),
         routerConfig: _router,
+        builder: (context, child) {
+          return SplashOverlay(child: child ?? const SizedBox.shrink());
+        },
       ),
     );
   }

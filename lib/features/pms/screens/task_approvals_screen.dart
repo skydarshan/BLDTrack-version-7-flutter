@@ -9,6 +9,7 @@ import '../../../core/network/api_helpers.dart';
 import '../../../core/widgets/sort_menu.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/theme/modern_widgets.dart';
+import '../../../core/widgets/motion.dart';
 import '../../../core/utils/list_query.dart';
 import '../services/pms_services.dart';
 import '../widgets/pms_widgets.dart';
@@ -302,82 +303,111 @@ class _TaskApprovalsScreenState extends State<TaskApprovalsScreen> {
       appBar: ModernAppBar(
         title: 'Task approvals',
         actions: [
-          SortMenuButton(
-            choices: const [
-              SortChoice(by: 'updatedAt', order: 'desc', label: 'Recently updated'),
-              SortChoice(by: 'updatedAt', order: 'asc', label: 'Least recently updated'),
-              SortChoice(by: 'title', order: 'asc', label: 'Title A–Z'),
-              SortChoice(by: 'due_date', order: 'asc', label: 'Due date'),
-            ],
-            sortBy: _sortBy,
-            sortOrder: _sortOrder,
-            onSelected: (by, order) {
-              setState(() {
-                _sortBy = by;
-                _sortOrder = order;
-                _readyPage = 1;
-                _pendingPage = 1;
-              });
-              _load(reset: true);
-            },
+          PressScale(
+            child: SortMenuButton(
+              choices: const [
+                SortChoice(by: 'updatedAt', order: 'desc', label: 'Recently updated'),
+                SortChoice(by: 'updatedAt', order: 'asc', label: 'Least recently updated'),
+                SortChoice(by: 'title', order: 'asc', label: 'Title A–Z'),
+                SortChoice(by: 'due_date', order: 'asc', label: 'Due date'),
+              ],
+              sortBy: _sortBy,
+              sortOrder: _sortOrder,
+              onSelected: (by, order) {
+                setState(() {
+                  _sortBy = by;
+                  _sortOrder = order;
+                  _readyPage = 1;
+                  _pendingPage = 1;
+                });
+                _load(reset: true);
+              },
+            ),
           ),
         ],
       ),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          AppSegmentTabs(
-            index: _tabIndex,
-            onChanged: _switchTab,
-            colors: const [AppTheme.success, AppTheme.accent],
-            tabs: const [
-              'Step 1 — Ready',
-              'Step 2 — Pending',
-            ],
-          ),
-          Padding(
-            padding: AppTheme.searchPadding,
-            child: TextField(
-              controller: _searchCtrl,
-              textInputAction: TextInputAction.search,
-              decoration: const InputDecoration(
-                hintText: 'Search title, project or site…',
-                prefixIcon: Icon(Icons.search),
-              ),
-              onChanged: _onSearch,
-              onSubmitted: _onSearch,
-            ),
-          ),
-          Padding(
-            padding: AppTheme.chipRowPadding,
-            child: Row(
+          StaggeredEntrance(
+            maxIndex: 2,
+            slide: 18,
+            itemMs: 380,
+            scaleFrom: 0.98,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Icon(Icons.info_outline_rounded, size: 16, color: stepColor),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text(
-                    isReady
-                        ? 'Tasks ready for coordinator completion (Step 1)'
-                        : 'Tasks awaiting final approval (Step 2)',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: stepColor,
+                EntranceItem(
+                  index: 0,
+                  child: AppSegmentTabs(
+                    index: _tabIndex,
+                    onChanged: _switchTab,
+                    colors: const [AppTheme.success, AppTheme.accent],
+                    tabs: const [
+                      'Step 1 — Ready',
+                      'Step 2 — Pending',
+                    ],
+                  ),
+                ),
+                EntranceItem(
+                  index: 1,
+                  child: Padding(
+                    padding: AppTheme.searchPadding,
+                    child: TextField(
+                      controller: _searchCtrl,
+                      textInputAction: TextInputAction.search,
+                      decoration: const InputDecoration(
+                        hintText: 'Search title, project or site…',
+                        prefixIcon: Icon(Icons.search),
+                      ),
+                      onChanged: _onSearch,
+                      onSubmitted: _onSearch,
                     ),
                   ),
                 ),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: AppTheme.softBg(stepColor),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text(
-                    '${items.length}',
-                    style: TextStyle(
-                      fontWeight: FontWeight.w800,
-                      color: stepColor,
-                      fontSize: 13,
+                EntranceItem(
+                  index: 2,
+                  child: Padding(
+                    padding: AppTheme.chipRowPadding,
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.info_outline_rounded,
+                          size: 16,
+                          color: stepColor,
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            isReady
+                                ? 'Tasks ready for coordinator completion (Step 1)'
+                                : 'Tasks awaiting final approval (Step 2)',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: stepColor,
+                            ),
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: AppTheme.softBg(stepColor),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Text(
+                            '${items.length}',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w800,
+                              color: stepColor,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ),
@@ -385,38 +415,59 @@ class _TaskApprovalsScreenState extends State<TaskApprovalsScreen> {
             ),
           ),
           Expanded(
-            child: RefreshIndicator(
-              onRefresh: () => _load(reset: true),
-              child: _loading && items.isEmpty
-                  ? const CenteredScrollLoader()
-                  : ListView(
+            child: StaggeredEntrance(
+              active: !(_loading && items.isEmpty),
+              replayToken: _tabIndex,
+              maxIndex: 6,
+              slide: 16,
+              itemMs: 380,
+              stepMs: 40,
+              scaleFrom: 0.97,
+              child: RefreshIndicator(
+                onRefresh: () => _load(reset: true),
+                child: _loading && items.isEmpty
+                    ? const CenteredScrollLoader()
+                    : ListView(
                       padding: AppTheme.formPadding,
                       children: [
                         if (_error != null) ...[
-                          ErrorBanner(message: _error!, onRetry: () => _load(reset: true)),
+                          EntranceItem(
+                            index: 0,
+                            child: ErrorBanner(
+                              message: _error!,
+                              onRetry: () => _load(reset: true),
+                            ),
+                          ),
                           const SizedBox(height: 12),
                         ],
                         if (items.isEmpty)
-                          EmptyState(
-                            message: _search.trim().isEmpty
-                                ? (isReady
-                                    ? 'No tasks ready for completion'
-                                    : 'No tasks pending approval')
-                                : listEmptyMessage(
-                                    noun: isReady
-                                        ? 'tasks ready for completion'
-                                        : 'tasks pending approval',
-                                    search: _search,
-                                  ),
-                            icon: isReady
-                                ? Icons.check_circle_outline_rounded
-                                : Icons.hourglass_empty_rounded,
+                          EntranceItem(
+                            index: 0,
+                            child: EmptyState(
+                              message: _search.trim().isEmpty
+                                  ? (isReady
+                                      ? 'No tasks ready for completion'
+                                      : 'No tasks pending approval')
+                                  : listEmptyMessage(
+                                      noun: isReady
+                                          ? 'tasks ready for completion'
+                                          : 'tasks pending approval',
+                                      search: _search,
+                                    ),
+                              icon: isReady
+                                  ? Icons.check_circle_outline_rounded
+                                  : Icons.hourglass_empty_rounded,
+                            ),
                           )
                         else if (isReady)
-                          ...items.map((task) {
+                          ...items.asMap().entries.map((entry) {
+                            final task = entry.value;
                             final id = idOf(task);
                             if (id == null) return const SizedBox.shrink();
-                            return _taskCard(
+                            return EntranceItem(
+                              index: entry.key,
+                              child: PressScale(
+                                child: _taskCard(
                               task,
                               accent: AppTheme.success,
                               actions: [
@@ -463,13 +514,19 @@ class _TaskApprovalsScreenState extends State<TaskApprovalsScreen> {
                                   ),
                                 ),
                               ],
+                                ),
+                              ),
                             );
                           })
                         else
-                          ...items.map((task) {
+                          ...items.asMap().entries.map((entry) {
+                            final task = entry.value;
                             final id = idOf(task);
                             if (id == null) return const SizedBox.shrink();
-                            return _taskCard(
+                            return EntranceItem(
+                              index: entry.key,
+                              child: PressScale(
+                                child: _taskCard(
                               task,
                               accent: AppTheme.accent,
                               actions: [
@@ -516,22 +573,28 @@ class _TaskApprovalsScreenState extends State<TaskApprovalsScreen> {
                                   ),
                                 ),
                               ],
+                                ),
+                              ),
                             );
                           }),
                         if (hasMore)
-                          TextButton(
-                            onPressed: () {
-                              if (isReady) {
-                                _readyPage += 1;
-                              } else {
-                                _pendingPage += 1;
-                              }
-                              _load();
-                            },
-                            child: const Text('Load more'),
+                          EntranceItem(
+                            index: 6,
+                            child: TextButton(
+                              onPressed: () {
+                                if (isReady) {
+                                  _readyPage += 1;
+                                } else {
+                                  _pendingPage += 1;
+                                }
+                                _load();
+                              },
+                              child: const Text('Load more'),
+                            ),
                           ),
                       ],
                     ),
+              ),
             ),
           ),
         ],

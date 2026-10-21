@@ -91,6 +91,7 @@ class SettingsApis {
         items = MasterResourceApi(client, '/items'),
         miscConfigs = MasterResourceApi(client, '/miscellaneous-configs'),
         auditLogs = MasterResourceApi(client, '/audit-logs'),
+        modules = MasterResourceApi(client, '/modules'),
         _client = client;
 
   final ApiClient _client;
@@ -112,6 +113,7 @@ class SettingsApis {
   final MasterResourceApi items;
   final MasterResourceApi miscConfigs;
   final MasterResourceApi auditLogs;
+  final MasterResourceApi modules;
 
   Future<Map<String, dynamic>?> getOrganization() async {
     final res = await _client.get<Map<String, dynamic>>('/organizations/current');
@@ -127,13 +129,11 @@ class SettingsApis {
     return unwrapDataMap(res.data);
   }
 
-  Future<List<Map<String, dynamic>>> listModules() async {
-    final res = await _client.get<Map<String, dynamic>>('/modules');
-    return unwrapDataList(res.data)
-        .whereType<Map>()
-        .map((e) => Map<String, dynamic>.from(e))
-        .toList();
-  }
+  /// Every catalog page, so role permissions see modules beyond the first page.
+  Future<List<Map<String, dynamic>>> listModules() => modules.listAll({
+        'sortBy': 'displayName',
+        'sortOrder': 'asc',
+      });
 
   Future<List<Map<String, dynamic>>> listPermissionDefs() async {
     final res = await _client.get<Map<String, dynamic>>('/permissions');
@@ -172,6 +172,57 @@ class SettingsApis {
         '/organizations/current/notification-email/test',
         data: const {},
       );
+
+  /// GET /email-templates?module=procurement|inventory|project_management
+  Future<List<Map<String, dynamic>>> listEmailTemplates(String module) async {
+    final res = await _client.get<Map<String, dynamic>>(
+      '/email-templates',
+      queryParameters: {'module': module},
+    );
+    final data = res.data?['data'];
+    if (data is List) return asMapList(data);
+    if (data is! Map) return const [];
+    final map = Map<String, dynamic>.from(data);
+    final direct = map['templates'];
+    if (direct is List && direct.isNotEmpty) return asMapList(direct);
+    final groups = map['modules'];
+    if (groups is! List) {
+      return direct is List ? asMapList(direct) : const [];
+    }
+    final rows = <Map<String, dynamic>>[];
+    for (final section in groups) {
+      if (section is! Map) continue;
+      final templates = section['templates'];
+      if (templates is List) rows.addAll(asMapList(templates));
+    }
+    return rows;
+  }
+
+  Future<Map<String, dynamic>> getEmailTemplate(String key) async {
+    final res = await _client.get<Map<String, dynamic>>(
+      '/email-templates/${Uri.encodeComponent(key)}',
+    );
+    return unwrapDataMap(res.data);
+  }
+
+  Future<Map<String, dynamic>> updateEmailTemplate(
+    String key,
+    Map<String, dynamic> data,
+  ) async {
+    final res = await _client.put<Map<String, dynamic>>(
+      '/email-templates/${Uri.encodeComponent(key)}',
+      data: data,
+    );
+    return unwrapDataMap(res.data);
+  }
+
+  Future<Map<String, dynamic>> resetEmailTemplate(String key) async {
+    final res = await _client.post<Map<String, dynamic>>(
+      '/email-templates/${Uri.encodeComponent(key)}/reset',
+      data: const {},
+    );
+    return unwrapDataMap(res.data);
+  }
 
   /// GET /items/:id/uom-options — allowed UOMs for procurement lines.
   Future<List<Map<String, dynamic>>> getItemUomOptions(String itemId) async {

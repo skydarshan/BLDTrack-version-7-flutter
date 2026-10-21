@@ -13,6 +13,9 @@ class StaggeredEntrance extends StatefulWidget {
     this.replayToken,
     this.maxIndex = 6,
     this.slide = 24,
+    this.itemMs = 460,
+    this.stepMs = 55,
+    this.scaleFrom = 1,
   });
 
   final Widget child;
@@ -26,20 +29,28 @@ class StaggeredEntrance extends StatefulWidget {
   final int maxIndex;
   final double slide;
 
+  /// How long each item fades and rises.
+  final int itemMs;
+
+  /// Delay between one item and the next.
+  final int stepMs;
+
+  /// 1 keeps size. A value just under 1 eases the item in.
+  final double scaleFrom;
+
   @override
   State<StaggeredEntrance> createState() => _StaggeredEntranceState();
 }
 
 class _StaggeredEntranceState extends State<StaggeredEntrance>
     with SingleTickerProviderStateMixin {
-  static const double _itemMs = 460;
-  static const double _stepMs = 55;
-
   late final AnimationController _controller;
   bool _reduce = false;
   bool _started = false;
   Object? _token;
 
+  double get _itemMs => widget.itemMs.toDouble();
+  double get _stepMs => widget.stepMs.toDouble();
   double get _totalMs => _itemMs + widget.maxIndex * _stepMs;
 
   @override
@@ -68,7 +79,9 @@ class _StaggeredEntranceState extends State<StaggeredEntrance>
   @override
   void didUpdateWidget(StaggeredEntrance oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.maxIndex != oldWidget.maxIndex) {
+    if (widget.maxIndex != oldWidget.maxIndex ||
+        widget.itemMs != oldWidget.itemMs ||
+        widget.stepMs != oldWidget.stepMs) {
       _controller.duration = _duration;
     }
     if (widget.replayToken != _token) {
@@ -114,6 +127,7 @@ class _StaggeredEntranceState extends State<StaggeredEntrance>
       stepMs: _stepMs,
       totalMs: _totalMs,
       slide: widget.slide,
+      scaleFrom: widget.scaleFrom,
       child: widget.child,
     );
   }
@@ -128,6 +142,7 @@ class _MotionScope extends InheritedWidget {
     required this.stepMs,
     required this.totalMs,
     required this.slide,
+    required this.scaleFrom,
     required super.child,
   });
 
@@ -138,6 +153,7 @@ class _MotionScope extends InheritedWidget {
   final double stepMs;
   final double totalMs;
   final double slide;
+  final double scaleFrom;
 
   static _MotionScope? maybeOf(BuildContext context) {
     return context.dependOnInheritedWidgetOfExactType<_MotionScope>();
@@ -149,7 +165,8 @@ class _MotionScope extends InheritedWidget {
         reduced != oldWidget.reduced ||
         maxIndex != oldWidget.maxIndex ||
         totalMs != oldWidget.totalMs ||
-        slide != oldWidget.slide;
+        slide != oldWidget.slide ||
+        scaleFrom != oldWidget.scaleFrom;
   }
 }
 
@@ -226,6 +243,7 @@ class _EntranceItemState extends State<EntranceItem> {
       child: _Rise(
         animation: curved,
         distance: scope.slide,
+        scaleFrom: scope.scaleFrom,
         child: widget.child,
       ),
     );
@@ -236,18 +254,28 @@ class _Rise extends AnimatedWidget {
   const _Rise({
     required Animation<double> animation,
     required this.distance,
+    this.scaleFrom = 1,
     required this.child,
   }) : super(listenable: animation);
 
   final double distance;
+  final double scaleFrom;
   final Widget child;
 
   @override
   Widget build(BuildContext context) {
     final t = (listenable as Animation<double>).value;
+    Widget current = child;
+    if (scaleFrom != 1) {
+      current = Transform.scale(
+        scale: scaleFrom + (1 - scaleFrom) * t,
+        alignment: Alignment.center,
+        child: current,
+      );
+    }
     return Transform.translate(
       offset: Offset(0, distance * (1 - t)),
-      child: child,
+      child: current,
     );
   }
 }

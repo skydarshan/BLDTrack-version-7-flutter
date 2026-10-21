@@ -26,6 +26,30 @@ class NotificationsApi {
 
   Future<void> markAllRead() =>
       _client.post<Map<String, dynamic>>('/notifications/read-all', data: const {});
+
+  /// Organization PMS event toggles. Same contract as the website
+  /// `GET/PUT /notifications/preferences`.
+  Future<List<Map<String, dynamic>>> getPreferences() async {
+    final res = await _client.get<Map<String, dynamic>>('/notifications/preferences');
+    return preferenceTypes(res.data);
+  }
+
+  Future<List<Map<String, dynamic>>> updatePreferences(
+    Map<String, dynamic> types,
+  ) async {
+    final res = await _client.put<Map<String, dynamic>>(
+      '/notifications/preferences',
+      data: {'types': types},
+    );
+    return preferenceTypes(res.data);
+  }
+}
+
+List<Map<String, dynamic>> preferenceTypes(Map<String, dynamic>? root) {
+  final data = unwrapDataMap(root);
+  final types = data['types'];
+  if (types is List) return asMapList(types);
+  return const [];
 }
 
 class BillingApi {

@@ -29,7 +29,14 @@ class StatusChip extends StatelessWidget {
       case 'hold':
       case 'open':
       case 'Pending':
+      case 'draft':
         return const Color(0xFFFFD666);
+      case 'approved':
+        return const Color(0xFFB7EB8F);
+      case 'revision_requested':
+        return const Color(0xFFFFADD2);
+      case 'not_started':
+        return const Color(0xFFE6F4FF);
       case 'partial':
         return const Color(0xFF91D5FF);
       case 'completion_requested':
@@ -62,7 +69,14 @@ class StatusChip extends StatelessWidget {
       case 'hold':
       case 'open':
       case 'Pending':
+      case 'draft':
         return const Color(0xFFAD6800);
+      case 'approved':
+        return const Color(0xFF237804);
+      case 'revision_requested':
+        return const Color(0xFFC41D7F);
+      case 'not_started':
+        return AppTheme.brand;
       case 'partial':
         return const Color(0xFF0050B3);
       case 'completion_requested':
