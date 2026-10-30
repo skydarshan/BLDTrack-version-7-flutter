@@ -12,6 +12,7 @@ import '../../../core/theme/modern_widgets.dart';
 import '../../../core/widgets/motion.dart';
 import '../services/pms_services.dart';
 import '../utils/pms_constants.dart';
+import '../utils/site_access.dart';
 import '../utils/site_options.dart';
 import '../widgets/pickers.dart';
 import '../widgets/pms_widgets.dart';
@@ -30,6 +31,7 @@ class _TasksListScreenState extends State<TasksListScreen> {
   Timer? _debounce;
 
   bool _loading = true;
+  bool _noAccess = false;
   String? _error;
   bool _mine = false;
   String _search = '';
@@ -151,6 +153,7 @@ class _TasksListScreenState extends State<TasksListScreen> {
       setState(() {
         _loading = true;
         _error = null;
+        _noAccess = false;
       });
     }
     try {
@@ -215,6 +218,18 @@ class _TasksListScreenState extends State<TasksListScreen> {
       });
     } on ApiException catch (e) {
       if (!mounted || gen != _loadGen) return;
+      if (isSiteAccessDenied(e)) {
+        setState(() {
+          _items = [];
+          _board = null;
+          _statusCounts = {};
+          _hasMore = false;
+          _noAccess = true;
+          _error = e.message;
+          _loading = false;
+        });
+        return;
+      }
       setState(() {
         _error = e.message;
         _loading = false;
@@ -246,7 +261,9 @@ class _TasksListScreenState extends State<TasksListScreen> {
       showPmsSnack(context, 'Task deleted');
       _load(reset: true);
     } on ApiException catch (e) {
-      if (mounted) showPmsSnack(context, e.message, error: true);
+      if (!mounted) return;
+      if (presentSiteAccessDenied(context, e)) return;
+      showPmsSnack(context, e.message, error: true);
     }
   }
 
@@ -471,7 +488,7 @@ class _TasksListScreenState extends State<TasksListScreen> {
               ],
             ),
           ),
-          if (_error != null)
+          if (_error != null && !_noAccess)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: SoftAppear(
@@ -482,7 +499,12 @@ class _TasksListScreenState extends State<TasksListScreen> {
               ),
             ),
           Expanded(
-            child: StaggeredEntrance(
+            child: _noAccess
+                ? NoAccessNotice(
+                    message: _error ?? 'You are not assigned to this site',
+                    onRetry: () => _load(reset: true),
+                  )
+                : StaggeredEntrance(
               active: !_loading,
               replayToken: _motion,
               maxIndex: 6,
@@ -607,7 +629,9 @@ class _TasksListScreenState extends State<TasksListScreen> {
       showPmsSnack(context, 'Status updated');
       await _load(reset: true);
     } on ApiException catch (e) {
-      if (mounted) showPmsSnack(context, e.message, error: true);
+      if (!mounted) return;
+      if (presentSiteAccessDenied(context, e)) return;
+      showPmsSnack(context, e.message, error: true);
     }
   }
 

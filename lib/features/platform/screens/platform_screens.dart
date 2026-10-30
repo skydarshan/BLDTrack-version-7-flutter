@@ -7,6 +7,7 @@ import '../../../core/network/api_helpers.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../app/app_services.dart';
 import '../../pms/widgets/pms_widgets.dart';
+import '../services/push_notification_service.dart';
 
 class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({super.key});
@@ -33,7 +34,9 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       setState(() {
         _items = res.items;
         _loading = false;
+        _error = null;
       });
+      context.read<PushNotificationService>().refresh();
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() {
@@ -44,60 +47,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   }
 
   void _openNotification(Map<String, dynamic> row) {
-    final rawLink = row['link']?.toString() ??
-        (row['metadata'] is Map ? row['metadata']['link']?.toString() : null);
-    final mapped = flutterNotificationPath(rawLink);
-    if (mapped != null) {
-      context.push(mapped);
-      return;
-    }
-    final entityType = row['entityType']?.toString() ??
-        (row['metadata'] is Map ? row['metadata']['entityType']?.toString() : null);
-    final entityId = idOf(
-      row['entityId'] ?? (row['metadata'] is Map ? row['metadata']['entityId'] : null),
-    );
-    final type = row['type']?.toString();
-    final entityIdEarly = idOf(
-      row['entityId'] ?? (row['metadata'] is Map ? row['metadata']['entityId'] : null),
-    );
-    switch (type) {
-      case 'dpr_pending_approval':
-        context.push(
-          entityIdEarly == null
-              ? '/pms/dpr/approvals'
-              : '/pms/dpr/approvals?open=$entityIdEarly',
-        );
-        return;
-      case 'dpr_revised':
-      case 'dpr_approved':
-        context.push(entityIdEarly == null ? '/pms/dpr' : '/pms/dpr/$entityIdEarly');
-        return;
-      case 'dpr_missing':
-        context.push('/pms/dpr?tab=missing');
-        return;
-    }
-    if (entityId == null) return;
-    switch (entityType) {
-      case 'dpr':
-      case 'daily_progress_report':
-      case 'dailyProgressReport':
-        context.push('/pms/dpr/$entityId');
-      case 'task':
-        context.push('/pms/tasks/$entityId');
-      case 'project':
-        context.push('/pms/projects/$entityId');
-      case 'requisition':
-      case 'requisition_request':
-        context.push('/procurement/rr/$entityId');
-      case 'rate_comparative':
-        context.push('/procurement/rc/$entityId');
-      case 'purchase_order':
-      case 'requisition_order':
-        context.push('/procurement/po/$entityId');
-      case 'dmr':
-      case 'dmr_purchase_order':
-        context.push('/dmr/status/$entityId');
-    }
+    context.push(notificationRouteFor(row));
   }
 
   @override
@@ -115,7 +65,11 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           ),
         ],
       ),
-      body: RefreshIndicator(
+      body: Column(
+        children: [
+          const PushAlertsCard(),
+          Expanded(
+            child: RefreshIndicator(
         onRefresh: _load,
         child: _loading
             ? const CenteredScrollLoader()
@@ -151,6 +105,72 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                           );
                         },
                       ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class PushAlertsCard extends StatelessWidget {
+  const PushAlertsCard({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final push = context.watch<PushNotificationService>();
+    final blocked = push.mobileSupported && push.enabled && !push.permissionGranted;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: AppTheme.cardShadow,
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 12, 8, 8),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.notifications_active_rounded, color: AppTheme.brand),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Push notifications', style: AppTheme.titleSmall),
+                        const SizedBox(height: 2),
+                        Text(
+                          push.mobileSupported
+                              ? 'Tasks, approvals, orders, inventory, and reports.'
+                              : 'Phone alerts are available on the Android and iOS app.',
+                          style: const TextStyle(color: AppTheme.muted, fontSize: 12, height: 1.3),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Switch(
+                    value: push.enabled && push.mobileSupported,
+                    onChanged: push.mobileSupported
+                        ? (value) => push.setEnabled(value)
+                        : null,
+                  ),
+                ],
+              ),
+              if (blocked)
+                const Padding(
+                  padding: EdgeInsets.only(left: 34, right: 8, bottom: 8),
+                  child: Text(
+                    'Notifications are blocked. Allow them for BldTrack in system settings, then turn this on again.',
+                    style: TextStyle(color: AppTheme.danger, fontSize: 12, height: 1.3),
+                  ),
+                ),
+            ],
+          ),
+        ),
       ),
     );
   }

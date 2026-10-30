@@ -1,6 +1,7 @@
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_helpers.dart';
 import '../../pms/services/projects_api.dart';
+import '../utils/module_catalog.dart';
 
 /// Generic REST CRUD for `/api/v1/{resource}` masters.
 class MasterResourceApi {
@@ -137,6 +138,8 @@ class SettingsApis {
 
   Future<List<Map<String, dynamic>>> listPermissionDefs() async {
     final res = await _client.get<Map<String, dynamic>>('/permissions');
+    final parsed = permissionDefsFromResponse(res.data);
+    if (parsed.isNotEmpty) return parsed;
     return unwrapDataList(res.data)
         .whereType<Map>()
         .map((e) => Map<String, dynamic>.from(e))

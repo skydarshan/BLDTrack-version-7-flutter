@@ -10,6 +10,7 @@ import '../../../core/widgets/sort_menu.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../services/pms_services.dart';
+import '../utils/site_access.dart';
 import '../utils/site_options.dart';
 import '../widgets/pickers.dart';
 import '../widgets/pms_widgets.dart';
@@ -25,6 +26,7 @@ class _TemplatesListScreenState extends State<TemplatesListScreen> {
   final _searchCtrl = TextEditingController();
   Timer? _debounce;
   bool _loading = true;
+  bool _noAccess = false;
   String? _error;
   bool _inactiveOnly = false;
   String _search = '';
@@ -66,6 +68,7 @@ class _TemplatesListScreenState extends State<TemplatesListScreen> {
       setState(() {
         _loading = true;
         _error = null;
+        _noAccess = false;
       });
     }
     try {
@@ -86,6 +89,16 @@ class _TemplatesListScreenState extends State<TemplatesListScreen> {
       });
     } on ApiException catch (e) {
       if (!mounted) return;
+      if (isSiteAccessDenied(e)) {
+        setState(() {
+          _items = [];
+          _hasMore = false;
+          _noAccess = true;
+          _error = e.message;
+          _loading = false;
+        });
+        return;
+      }
       setState(() {
         _error = e.message;
         _loading = false;
@@ -386,7 +399,9 @@ class _TemplatesListScreenState extends State<TemplatesListScreen> {
         context.push('/pms/projects/$projectId');
       }
     } on ApiException catch (e) {
-      if (mounted) showPmsSnack(context, e.message, error: true);
+      if (!mounted) return;
+      if (presentSiteAccessDenied(context, e)) return;
+      showPmsSnack(context, e.message, error: true);
     }
   }
 
@@ -483,7 +498,9 @@ class _TemplatesListScreenState extends State<TemplatesListScreen> {
       showPmsSnack(context, 'Template applied');
       context.push('/pms/projects/$projectId');
     } on ApiException catch (e) {
-      if (mounted) showPmsSnack(context, e.message, error: true);
+      if (!mounted) return;
+      if (presentSiteAccessDenied(context, e)) return;
+      showPmsSnack(context, e.message, error: true);
     }
   }
 
@@ -547,7 +564,7 @@ class _TemplatesListScreenState extends State<TemplatesListScreen> {
               _load(reset: true);
             },
           ),
-          if (_error != null)
+          if (_error != null && !_noAccess)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: ErrorBanner(
@@ -558,7 +575,12 @@ class _TemplatesListScreenState extends State<TemplatesListScreen> {
           Expanded(
             child: RefreshIndicator(
               onRefresh: () => _load(reset: true),
-              child: _loading && _items.isEmpty
+              child: _noAccess
+                ? NoAccessNotice(
+                    message: _error ?? 'You are not assigned to this site',
+                    onRetry: () => _load(reset: true),
+                  )
+                : _loading && _items.isEmpty
                   ? const CenteredScrollLoader()
                   : _items.isEmpty
                       ? EmptyListBody(message: 'No templates found')

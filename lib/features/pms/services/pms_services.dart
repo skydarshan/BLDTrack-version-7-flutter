@@ -4,6 +4,7 @@ import 'masters_api.dart';
 import 'project_templates_api.dart';
 import 'dpr_api.dart';
 import 'projects_api.dart';
+import 'structure_api.dart';
 import 'tasks_api.dart';
 
 /// Shared PMS API facade injected via Provider.
@@ -14,7 +15,8 @@ class PmsServices {
         tasks = TasksApi(client),
         dpr = DprApi(client),
         templates = ProjectTemplatesApi(client),
-        masters = MastersApi(client);
+        masters = MastersApi(client),
+        structure = StructureApi(client);
 
   final DashboardApi dashboard;
   final ProjectsApi projects;
@@ -22,4 +24,5 @@ class PmsServices {
   final DprApi dpr;
   final ProjectTemplatesApi templates;
   final MastersApi masters;
+  final StructureApi structure;
 }

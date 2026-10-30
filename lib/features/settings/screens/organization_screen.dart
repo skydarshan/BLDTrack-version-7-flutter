@@ -34,6 +34,8 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
   final _fieldErrors = FieldErrors();
   Map<String, dynamic> _modules = buildDefaultModules();
   Map<String, dynamic> _savedModules = buildDefaultModules();
+  dynamic _rawModules;
+  Set<String> _unsupportedSubmodules = const {};
   Map<String, dynamic>? _org;
   List<Map<String, dynamic>> _roles = [];
 
@@ -151,9 +153,12 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
         _addressCtrl.text = address?.toString() ?? '';
       }
       _loadApprovalsFromOrg(org);
+      final rawModules = org?['modules'];
       setState(() {
-        _modules = normalizeOrgModules(org?['modules']);
-        _savedModules = normalizeOrgModules(org?['modules']);
+        _rawModules = rawModules;
+        _unsupportedSubmodules = unsupportedSubmoduleKeys(rawModules);
+        _modules = normalizeOrgModules(rawModules);
+        _savedModules = normalizeOrgModules(rawModules);
         _roles = roles;
         _loading = false;
       });
@@ -192,6 +197,29 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
       _canEditModules &&
       normalizeOrgModules(_modules).toString() != normalizeOrgModules(_savedModules).toString();
 
+  List<String> _droppedPmsSubmodules(Map<String, dynamic> sent, dynamic returned) {
+    bool on(dynamic modules, String key) {
+      final normalized = normalizeOrgModules(modules);
+      final pm = normalized['project_management'];
+      if (pm is! Map) return false;
+      final subs = pm['submodules'];
+      if (subs is! Map) return false;
+      return subs[key] == true;
+    }
+
+    const labels = {
+      'structure': 'Project Structure',
+      'progress_model': 'Progress Model',
+    };
+    final dropped = <String>[];
+    for (final entry in labels.entries) {
+      if (on(sent, entry.key) && !on(returned, entry.key)) {
+        dropped.add(entry.value);
+      }
+    }
+    return dropped;
+  }
+
   Future<void> _save({bool modulesOnly = false}) async {
     if (!_perms.can(_permission, 'update') && !_perms.isSuperAdmin) {
       showPmsSnack(context, 'No update permission', error: true);
@@ -205,9 +233,10 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
       _fieldErrors.set('modules', 'Select at least one product module');
     }
 
-    final modules = _canEditModules
-        ? normalizeOrgModules(_modules)
-        : normalizeOrgModules(_org?['modules']);
+    final modules = modulesPayloadForServer(
+      edited: _canEditModules ? _modules : normalizeOrgModules(_org?['modules']),
+      rawStored: _rawModules,
+    );
     final procurementOn = modules['procurement'] is Map &&
         (modules['procurement'] as Map)['enabled'] == true;
     final pmOn = modules['project_management'] is Map &&
@@ -265,10 +294,9 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
         },
       };
 
-      await context.read<SettingsApis>().updateOrganization(payload);
+      final updated = await context.read<SettingsApis>().updateOrganization(payload);
       if (!mounted) return;
 
-      // Refresh workspace entitlements + Super Admin permission sync.
       final orgSession = context.read<OrgSession>();
       final auth = context.read<AuthProvider>();
       await orgSession.refresh();
@@ -276,10 +304,23 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
       await auth.refreshMe();
       if (!mounted) return;
 
-      await showSavedConfirmation(
-        context,
-        modulesOnly ? 'Module access updated' : 'Organization updated',
-      );
+      final returnedModules = updated['modules'];
+      if (returnedModules != null) _rawModules = returnedModules;
+      final dropped = returnedModules is Map
+          ? _droppedPmsSubmodules(modules, returnedModules)
+          : const <String>[];
+      if (dropped.isEmpty) {
+        await showSavedConfirmation(
+          context,
+          modulesOnly ? 'Module access updated' : 'Organization updated',
+        );
+      } else if (mounted) {
+        showPmsSnack(
+          context,
+          '${dropped.join(' and ')} did not stay on after save.',
+          error: true,
+        );
+      }
       if (mounted) await _load();
     } on ApiException catch (e) {
       if (!mounted) return;
@@ -425,6 +466,7 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
                       modules: _modules,
                       enabled: canEditModules && !_saving,
                       editableModuleKeys: canEditModules ? null : const {},
+                      unsupportedSubmodules: _unsupportedSubmodules,
                       approverMode: ModuleApproverMode.roleIds,
                       roles: _roles,
                       rrSteps: _rrSteps,

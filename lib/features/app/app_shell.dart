@@ -9,6 +9,7 @@ import '../../core/theme/modern_widgets.dart';
 import '../../core/widgets/motion.dart';
 import '../auth/providers/auth_provider.dart';
 import '../org/org_session.dart';
+import '../platform/services/push_notification_service.dart';
 import '../pms/utils/dpr_format.dart';
 
 class AppShell extends StatelessWidget {
@@ -71,6 +72,7 @@ class AppShell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final org = context.watch<OrgSession>();
+    final unread = context.watch<PushNotificationService>().unreadCount;
     final location = GoRouterState.of(context).uri.path;
     final tabs = _tabs(org);
     final index = _index(location, tabs).clamp(0, tabs.length - 1);
@@ -114,6 +116,7 @@ class AppShell extends StatelessWidget {
               icon: tab.iconOutlined,
               selectedIcon: tab.iconFilled,
               color: AppTheme.colorAt(tab.colorIndex),
+              badgeCount: tab.path == '/more' ? unread : 0,
             ),
         ],
       ),
@@ -674,6 +677,9 @@ class _MoreTileButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = AppTheme.colorAt(tile.colorIndex);
+    final unread = tile.path == '/notifications'
+        ? context.watch<PushNotificationService>().unreadCount
+        : 0;
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -697,7 +703,10 @@ class _MoreTileButton extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              AppIconBadge(icon: tile.icon, color: color),
+              CountBadge(
+                count: unread,
+                child: AppIconBadge(icon: tile.icon, color: color),
+              ),
               const SizedBox(height: 8),
               Text(
                 tile.title,

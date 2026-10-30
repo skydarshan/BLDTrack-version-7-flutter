@@ -8,6 +8,7 @@ import 'core/theme/app_theme.dart';
 import 'features/app/app_services.dart';
 import 'features/app/splash_screen.dart';
 import 'features/auth/providers/auth_provider.dart';
+import 'features/platform/services/push_notification_service.dart';
 import 'features/auth/services/auth_api.dart';
 import 'features/org/org_session.dart';
 import 'features/pms/services/pms_services.dart';
@@ -30,6 +31,7 @@ class _AvidusAppState extends State<AvidusApp> {
   late final SettingsApis _settingsApis;
   late final AppRouterRefresh _routerRefresh;
   late final GoRouter _router;
+  late final PushNotificationService _push;
 
   @override
   void initState() {
@@ -60,11 +62,25 @@ class _AvidusAppState extends State<AvidusApp> {
     );
     _routerRefresh = AppRouterRefresh(_authProvider, _orgSession);
     _router = createAppRouter(_authProvider, _orgSession, _routerRefresh);
+    _push = PushNotificationService(_appServices.notifications);
+    _push.attachRouter(_router);
+    _authProvider.addListener(_syncPush);
+    _syncPush();
     _authProvider.bootstrap().then((_) => _orgSession.bootstrap());
+  }
+
+  void _syncPush() {
+    if (_authProvider.isAuthenticated) {
+      _push.start();
+    } else if (_authProvider.status == AuthStatus.unauthenticated) {
+      _push.stop();
+    }
   }
 
   @override
   void dispose() {
+    _authProvider.removeListener(_syncPush);
+    _push.dispose();
     _routerRefresh.dispose();
     super.dispose();
   }
@@ -75,6 +91,7 @@ class _AvidusAppState extends State<AvidusApp> {
       providers: [
         ChangeNotifierProvider<AuthProvider>.value(value: _authProvider),
         ChangeNotifierProvider<OrgSession>.value(value: _orgSession),
+        ChangeNotifierProvider<PushNotificationService>.value(value: _push),
         Provider<AppServices>.value(value: _appServices),
         Provider<PmsServices>.value(value: _pmsServices),
         Provider<SettingsApis>.value(value: _settingsApis),

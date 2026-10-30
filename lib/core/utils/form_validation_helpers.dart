@@ -88,8 +88,17 @@ String? _mapApiFieldKey(String field) {
     'password': 'password',
     'name': 'name',
     'phone': 'phone',
+    'structure_nodes': 'structure',
+    'floor_level': 'structure',
   };
   if (known.containsKey(field)) return known[field];
+  if (field == 'structure_nodes' ||
+      field.startsWith('structure_nodes.') ||
+      field.startsWith('structure_nodes[') ||
+      field == 'floor_level' ||
+      field.endsWith('.floor_level')) {
+    return 'structure';
+  }
   if (field.isNotEmpty) return field;
   return null;
 }

@@ -131,12 +131,55 @@ class ModernNavItem {
     required this.icon,
     required this.selectedIcon,
     required this.color,
+    this.badgeCount = 0,
   });
 
   final String label;
   final IconData icon;
   final IconData selectedIcon;
   final Color color;
+  final int badgeCount;
+}
+
+class CountBadge extends StatelessWidget {
+  const CountBadge({super.key, required this.count, required this.child});
+
+  final int count;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    if (count <= 0) return child;
+    final label = count > 9 ? '9+' : '$count';
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        child,
+        Positioned(
+          right: -6,
+          top: -4,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: AppTheme.danger,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text(
+              label,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 9,
+                fontWeight: FontWeight.w800,
+                height: 1.1,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 class _NavItemButton extends StatelessWidget {
@@ -167,10 +210,13 @@ class _NavItemButton extends StatelessWidget {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(
-                selected ? item.selectedIcon : item.icon,
-                size: 22,
-                color: selected ? item.color : AppTheme.muted,
+              CountBadge(
+                count: item.badgeCount,
+                child: Icon(
+                  selected ? item.selectedIcon : item.icon,
+                  size: 22,
+                  color: selected ? item.color : AppTheme.muted,
+                ),
               ),
               const SizedBox(height: 2),
               Text(

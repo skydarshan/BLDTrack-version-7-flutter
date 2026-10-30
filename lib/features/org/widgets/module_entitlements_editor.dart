@@ -31,6 +31,7 @@ class ModuleEntitlementsEditor extends StatelessWidget {
     this.dprStep2 = '',
     this.onApprovalChanged,
     this.editableModuleKeys,
+    this.unsupportedSubmodules = const {},
   });
 
   final Map<String, dynamic> modules;
@@ -41,6 +42,9 @@ class ModuleEntitlementsEditor extends StatelessWidget {
   final List<Map<String, dynamic>> roles;
   /// When set, only these product module keys can be toggled. Others are read-only.
   final Set<String>? editableModuleKeys;
+
+  /// Submodule keys the connected API does not store. Shown disabled.
+  final Set<String> unsupportedSubmodules;
 
   final int rrSteps;
   final String rrStep1;
@@ -102,8 +106,11 @@ class ModuleEntitlementsEditor extends StatelessWidget {
             mod: Map<String, dynamic>.from(normalized[moduleKey] as Map),
             enabled: enabled && _canEditModule(moduleKey),
             readOnly: !_canEditModule(moduleKey),
+            unsupportedSubmodules: unsupportedSubmodules,
             onToggleModule: (v) {
-              var next = enableModuleFully(normalized, moduleKey, v);
+              var next = _withoutUnsupported(
+                enableModuleFully(normalized, moduleKey, v),
+              );
               onModulesChanged(next);
               if (!v && onApprovalChanged != null) {
                 if (moduleKey == 'procurement') {
@@ -130,7 +137,9 @@ class ModuleEntitlementsEditor extends StatelessWidget {
             },
             onToggleSub: (sub, v) {
               onModulesChanged(
-                setSubmoduleEnabled(normalized, moduleKey, sub, v),
+                _withoutUnsupported(
+                  setSubmoduleEnabled(normalized, moduleKey, sub, v),
+                ),
               );
             },
           ),
@@ -222,6 +231,21 @@ class ModuleEntitlementsEditor extends StatelessWidget {
     if (editableModuleKeys == null) return true;
     return editableModuleKeys!.contains(moduleKey);
   }
+
+  Map<String, dynamic> _withoutUnsupported(Map<String, dynamic> modules) {
+    if (unsupportedSubmodules.isEmpty) return modules;
+    final next = normalizeOrgModules(modules);
+    for (final key in next.keys) {
+      final mod = Map<String, dynamic>.from(next[key] as Map);
+      final subs = Map<String, dynamic>.from(mod['submodules'] as Map);
+      for (final sub in unsupportedSubmodules) {
+        if (subs.containsKey(sub)) subs[sub] = false;
+      }
+      mod['submodules'] = subs;
+      next[key] = mod;
+    }
+    return next;
+  }
 }
 
 enum ModuleApproverMode { names, roleIds }
@@ -232,6 +256,7 @@ class _ModuleCard extends StatelessWidget {
     required this.mod,
     required this.enabled,
     required this.readOnly,
+    required this.unsupportedSubmodules,
     required this.onToggleModule,
     required this.onToggleSub,
   });
@@ -240,7 +265,16 @@ class _ModuleCard extends StatelessWidget {
   final Map<String, dynamic> mod;
   final bool enabled;
   final bool readOnly;
+  final Set<String> unsupportedSubmodules;
   final ValueChanged<bool> onToggleModule;
+
+  Widget? _submoduleSubtitle(String sub) {
+    final text = unsupportedSubmodules.contains(sub)
+        ? 'This API does not store this module yet.'
+        : submoduleHelpMap[sub];
+    if (text == null || text.isEmpty) return null;
+    return Text(text, style: const TextStyle(fontSize: 12));
+  }
   final void Function(String sub, bool enabled) onToggleSub;
 
   @override
@@ -281,8 +315,9 @@ class _ModuleCard extends StatelessWidget {
                       dense: true,
                       contentPadding: EdgeInsets.zero,
                       title: Text(submoduleLabelsMap[sub] ?? sub.replaceAll('_', ' ')),
-                      value: subs[sub] == true,
-                      onChanged: enabled
+                      subtitle: _submoduleSubtitle(sub),
+                      value: unsupportedSubmodules.contains(sub) ? false : subs[sub] == true,
+                      onChanged: enabled && !unsupportedSubmodules.contains(sub)
                           ? (v) => onToggleSub(sub, v ?? false)
                           : null,
                     ),

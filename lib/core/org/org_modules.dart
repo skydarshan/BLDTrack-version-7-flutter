@@ -2,7 +2,15 @@
 const moduleCatalog = {
   'procurement': ['requisition', 'rate_comparison', 'purchase_order', 'dmr'],
   'inventory': ['inventory', 'material_issue', 'inter_site_transfer', 'scrape_disposal'],
-  'project_management': ['projects', 'templates', 'tasks', 'task_progress', 'dpr'],
+  'project_management': [
+    'projects',
+    'templates',
+    'tasks',
+    'task_progress',
+    'dpr',
+    'structure',
+    'progress_model',
+  ],
 };
 
 const workspaceOrder = ['procurement', 'inventory', 'project_management'];
@@ -27,6 +35,15 @@ const submoduleLabels = {
   'tasks': 'Tasks',
   'task_progress': 'Task progress',
   'dpr': 'Daily progress',
+  'structure': 'Project Structure',
+  'progress_model': 'Progress Model',
+};
+
+/// Suggested helper text from the project-structure guide.
+const submoduleHelp = {
+  'structure':
+      'Buildings, floors and units of a project, used for task locations and the 3D model',
+  'progress_model': '3D view of the project coloured by task progress',
 };
 
 Map<String, List<String>> get moduleCatalogMap =>
@@ -37,6 +54,8 @@ Map<String, String> get workspaceLabelsMap =>
 
 Map<String, String> get submoduleLabelsMap =>
     Map<String, String>.from(submoduleLabels);
+
+Map<String, String> get submoduleHelpMap => Map<String, String>.from(submoduleHelp);
 
 Map<String, dynamic> buildDefaultModules() {
   final modules = <String, dynamic>{};
@@ -156,6 +175,8 @@ const workspacePermissionModules = {
     'taskprogress',
     'dpr',
     'contractor',
+    'projectstructure',
+    'projectmodel',
   ],
 };
 
@@ -294,6 +315,60 @@ Map<String, dynamic> emptyApprovalPayload() => {
       'steps': 0,
       'approvers': {'step1': null, 'step2': null},
     };
+
+/// Submodule keys the API actually returned as booleans.
+///
+/// A missing key means this server's catalog does not store that switch.
+Set<String> serverSubmoduleKeys(dynamic stored, String moduleKey) {
+  if (stored is! Map) return const {};
+  final mod = stored[moduleKey];
+  if (mod is! Map) return const {};
+  final subs = mod['submodules'];
+  if (subs is! Map) return const {};
+  final keys = <String>{};
+  subs.forEach((key, value) {
+    if (value is bool) keys.add(key.toString());
+  });
+  return keys;
+}
+
+/// The live API stores these even when an older organisation document omitted them.
+const serverBackedSubmodules = {'structure', 'progress_model'};
+
+/// Submodule keys in the client catalog that this server did not return.
+Set<String> unsupportedSubmoduleKeys(dynamic stored) {
+  final unsupported = <String>{};
+  final source = stored is Map ? stored : const {};
+  for (final entry in moduleCatalog.entries) {
+    final known = serverSubmoduleKeys(source, entry.key);
+    if (known.isEmpty) continue;
+    for (final sub in entry.value) {
+      if (serverBackedSubmodules.contains(sub)) continue;
+      if (!known.contains(sub)) unsupported.add(sub);
+    }
+  }
+  return unsupported;
+}
+
+/// Drop submodule flags the connected API does not store, so a save is not rejected.
+Map<String, dynamic> modulesPayloadForServer({
+  required Map<String, dynamic> edited,
+  required dynamic rawStored,
+}) {
+  final next = normalizeOrgModules(edited);
+  for (final moduleKey in next.keys.toList()) {
+    final known = serverSubmoduleKeys(rawStored, moduleKey);
+    if (known.isEmpty) continue;
+    final mod = Map<String, dynamic>.from(next[moduleKey] as Map);
+    final subs = Map<String, dynamic>.from(mod['submodules'] as Map);
+    subs.removeWhere(
+      (key, _) => !known.contains(key) && !serverBackedSubmodules.contains(key),
+    );
+    mod['submodules'] = subs;
+    next[moduleKey] = mod;
+  }
+  return next;
+}
 
 bool anyModuleEnabled(Map<String, dynamic>? modules) {
   final normalized = normalizeOrgModules(modules);

@@ -12,6 +12,7 @@ import '../../../core/utils/form_validators.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../services/pms_services.dart';
 import '../utils/pms_constants.dart';
+import '../utils/site_access.dart';
 import '../utils/site_options.dart';
 import '../widgets/media_widgets.dart';
 import '../widgets/pickers.dart';
@@ -37,6 +38,7 @@ class _ProjectFormScreenState extends State<ProjectFormScreen> {
 
   bool _loading = false;
   bool _saving = false;
+  bool _noAccess = false;
   String? _error;
 
   String _status = 'not_started';
@@ -86,7 +88,11 @@ class _ProjectFormScreenState extends State<ProjectFormScreen> {
   }
 
   Future<void> _bootstrap() async {
-    setState(() => _loading = true);
+    setState(() {
+      _loading = true;
+      _noAccess = false;
+      _error = null;
+    });
     try {
       final api = context.read<PmsServices>();
       final me = widget.isEdit ? null : context.read<AuthProvider>().user;
@@ -130,6 +136,7 @@ class _ProjectFormScreenState extends State<ProjectFormScreen> {
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() {
+        _noAccess = isSiteAccessDenied(e);
         _error = e.message;
         _loading = false;
       });
@@ -272,7 +279,16 @@ class _ProjectFormScreenState extends State<ProjectFormScreen> {
       setState(() => _loaded = project);
       showPmsSnack(context, 'File removed');
     } on ApiException catch (e) {
-      if (mounted) showPmsSnack(context, e.message, error: true);
+      if (!mounted) return;
+      if (presentSiteAccessDenied(context, e, onNoAccess: (message) {
+        setState(() {
+          _noAccess = true;
+          _error = message;
+        });
+      })) {
+        return;
+      }
+      showPmsSnack(context, e.message, error: true);
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -351,6 +367,13 @@ class _ProjectFormScreenState extends State<ProjectFormScreen> {
       if (mounted) context.pop(true);
     } on ApiException catch (e) {
       if (!mounted) return;
+      if (isSiteAccessDenied(e)) {
+        setState(() {
+          _noAccess = true;
+          _error = e.message;
+        });
+        return;
+      }
       _fieldErrors.merge(apiFieldErrors(e));
       setState(() {});
       showPmsSnack(context, formatApiErrorSummary(e), error: true);
@@ -367,7 +390,12 @@ class _ProjectFormScreenState extends State<ProjectFormScreen> {
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
-          : Form(
+          : _noAccess
+              ? NoAccessNotice(
+                  message: _error ?? 'You are not assigned to this project\'s site',
+                  onRetry: _bootstrap,
+                )
+              : Form(
               key: _formKey,
               child: ListView(
                 padding: AppTheme.formPadding,

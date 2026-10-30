@@ -348,6 +348,44 @@ class ErrorBanner extends StatelessWidget {
   }
 }
 
+/// Site 403: a no-access state, not an error toast.
+class NoAccessNotice extends StatelessWidget {
+  const NoAccessNotice({super.key, required this.message, this.onRetry});
+
+  final String message;
+  final VoidCallback? onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.lock_outline, size: 40, color: AppTheme.muted),
+            const SizedBox(height: 12),
+            const Text(
+              'No access',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: AppTheme.muted),
+            ),
+            if (onRetry != null) ...[
+              const SizedBox(height: 12),
+              TextButton(onPressed: onRetry, child: const Text('Retry')),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 Future<void> showPmsSnack(
   BuildContext context,
   String message, {

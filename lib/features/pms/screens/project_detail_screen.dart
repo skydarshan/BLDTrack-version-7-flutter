@@ -12,10 +12,16 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/network/api_helpers.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../auth/providers/auth_provider.dart';
+import '../../org/org_session.dart';
+import '../../settings/utils/permissions.dart';
 import '../services/pms_services.dart';
 import '../utils/pms_constants.dart';
 import '../widgets/media_widgets.dart';
+import '../utils/site_access.dart';
+import '../utils/structure_access.dart';
 import '../widgets/pms_widgets.dart';
+import 'progress_model_screen.dart';
+import 'structure_tab.dart';
 
 class ProjectDetailScreen extends StatefulWidget {
   const ProjectDetailScreen({super.key, required this.projectId});
@@ -27,9 +33,10 @@ class ProjectDetailScreen extends StatefulWidget {
 }
 
 class _ProjectDetailScreenState extends State<ProjectDetailScreen>
-    with SingleTickerProviderStateMixin {
-  late final TabController _tabs;
+    with TickerProviderStateMixin {
+  TabController? _tabs;
   bool _loading = true;
+  bool _noAccess = false;
   String? _error;
   Map<String, dynamic>? _overview;
   Map<String, dynamic>? _project;
@@ -50,17 +57,69 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen>
   @override
   void initState() {
     super.initState();
-    _tabs = TabController(length: 7, vsync: this);
-    _tabs.addListener(() {
-      if (_tabs.indexIsChanging) return;
-      _onTab(_tabs.index);
-    });
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadCore());
+  }
+
+  void _handleTab() {
+    final tabs = _tabs;
+    if (tabs == null || tabs.indexIsChanging) return;
+    _onTab(tabs.index);
+  }
+
+  bool _showStructure() {
+    final org = context.read<OrgSession>();
+    final perms = Permissions(context.read<AuthProvider>().user);
+    return showStructureEditor(org, perms);
+  }
+
+  bool _showProgressModel() {
+    final org = context.read<OrgSession>();
+    final perms = Permissions(context.read<AuthProvider>().user);
+    return showProgressModelTab(org, perms);
+  }
+
+  void _fail(ApiException e) {
+    if (!mounted) return;
+    if (presentSiteAccessDenied(context, e, onNoAccess: (message) {
+      setState(() {
+        _noAccess = true;
+        _error = message;
+      });
+    })) {
+      return;
+    }
+    showPmsSnack(context, e.message, error: true);
+  }
+
+  int _tabCount() {
+    var length = 7;
+    if (_showStructure()) length += 1;
+    if (_showProgressModel()) length += 1;
+    return length;
+  }
+
+  void _syncTabs() {
+    final length = _tabCount();
+    final current = _tabs;
+    if (current != null && current.length == length) return;
+    final index = current == null ? 0 : current.index.clamp(0, length - 1);
+    current?.removeListener(_handleTab);
+    current?.dispose();
+    final next = TabController(length: length, vsync: this, initialIndex: index);
+    next.addListener(_handleTab);
+    _tabs = next;
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _syncTabs();
   }
 
   @override
   void dispose() {
-    _tabs.dispose();
+    _tabs?.removeListener(_handleTab);
+    _tabs?.dispose();
     _commentCtrl.dispose();
     _jsonCtrl.dispose();
     super.dispose();
@@ -82,11 +141,14 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen>
         _overview = results[0];
         _project = results[1];
         _loading = false;
+        _noAccess = false;
+        _error = null;
       });
-      await _onTab(_tabs.index);
+      await _onTab(_tabs!.index);
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() {
+        _noAccess = isSiteAccessDenied(e);
         _error = e.message;
         _loading = false;
       });
@@ -115,7 +177,7 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen>
         if (mounted) setState(() => _board = board);
       }
     } on ApiException catch (e) {
-      if (mounted) showPmsSnack(context, e.message, error: true);
+      _fail(e);
     }
   }
 
@@ -128,7 +190,16 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen>
         _commentsError = null;
       });
     } on ApiException catch (e) {
-      if (mounted) setState(() => _commentsError = e.message);
+      if (!mounted) return;
+      if (presentSiteAccessDenied(context, e, onNoAccess: (message) {
+        setState(() {
+          _noAccess = true;
+          _error = message;
+        });
+      })) {
+        return;
+      }
+      setState(() => _commentsError = e.message);
     }
   }
 
@@ -151,7 +222,7 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen>
       _commentCtrl.clear();
       await _loadComments();
     } on ApiException catch (e) {
-      if (mounted) showPmsSnack(context, e.message, error: true);
+      _fail(e);
     } finally {
       if (mounted) setState(() => _commentBusy = false);
     }
@@ -190,7 +261,7 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen>
       if (!mounted) return;
       await _loadComments();
     } on ApiException catch (e) {
-      if (mounted) showPmsSnack(context, e.message, error: true);
+      _fail(e);
     } finally {
       if (mounted) setState(() => _commentBusy = false);
     }
@@ -212,7 +283,7 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen>
       if (!mounted) return;
       await _loadComments();
     } on ApiException catch (e) {
-      if (mounted) showPmsSnack(context, e.message, error: true);
+      _fail(e);
     } finally {
       if (mounted) setState(() => _commentBusy = false);
     }
@@ -240,7 +311,16 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen>
           await context.read<PmsServices>().projects.getById(widget.projectId);
       if (mounted) setState(() => _project = project);
     } on ApiException catch (e) {
-      if (mounted) setState(() => _mediaError = e.message);
+      if (!mounted) return;
+      if (presentSiteAccessDenied(context, e, onNoAccess: (message) {
+        setState(() {
+          _noAccess = true;
+          _error = message;
+        });
+      })) {
+        return;
+      }
+      setState(() => _mediaError = e.message);
     } catch (_) {
       if (mounted) {
         setState(() => _mediaError = 'Upload failed. Check the connection and tap Retry.');
@@ -263,7 +343,7 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen>
           await context.read<PmsServices>().projects.getById(widget.projectId);
       if (mounted) setState(() => _project = project);
     } on ApiException catch (e) {
-      if (mounted) showPmsSnack(context, e.message, error: true);
+      _fail(e);
     } finally {
       if (mounted) setState(() => _mediaBusy = false);
     }
@@ -284,7 +364,7 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen>
       if (!mounted) return;
       await Share.shareXFiles([XFile(file.path)], text: 'Project tasks export');
     } on ApiException catch (e) {
-      if (mounted) showPmsSnack(context, e.message, error: true);
+      _fail(e);
     }
   }
 
@@ -298,7 +378,7 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen>
       if (!mounted) return;
       await Share.shareXFiles([XFile(file.path)], text: 'Task import template');
     } on ApiException catch (e) {
-      if (mounted) showPmsSnack(context, e.message, error: true);
+      _fail(e);
     }
   }
 
@@ -324,7 +404,7 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen>
         dryRun ? 'Preview ready — review then commit' : 'Import applied',
       );
     } on ApiException catch (e) {
-      if (mounted) showPmsSnack(context, e.message, error: true);
+      _fail(e);
     } finally {
       if (mounted) setState(() => _importing = false);
     }
@@ -350,7 +430,7 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen>
     } on FormatException {
       showPmsSnack(context, 'Invalid JSON', error: true);
     } on ApiException catch (e) {
-      if (mounted) showPmsSnack(context, e.message, error: true);
+      _fail(e);
     } finally {
       if (mounted) setState(() => _importing = false);
     }
@@ -371,10 +451,10 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen>
       if (!mounted) return;
       showPmsSnack(context, 'Tasks imported');
       setState(() => _importPreview = null);
-      _tabs.index = 2;
+      _tabs?.index = 2;
       await _onTab(2);
     } on ApiException catch (e) {
-      if (mounted) showPmsSnack(context, e.message, error: true);
+      _fail(e);
     } finally {
       if (mounted) setState(() => _importing = false);
     }
@@ -440,7 +520,7 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen>
       if (!mounted) return;
       await showSavedConfirmation(context, 'Template created from project');
     } on ApiException catch (e) {
-      if (mounted) showPmsSnack(context, e.message, error: true);
+      _fail(e);
     }
   }
 
@@ -499,7 +579,7 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen>
         ),
       );
     } on ApiException catch (e) {
-      if (mounted) showPmsSnack(context, e.message, error: true);
+      _fail(e);
     }
   }
 
@@ -515,7 +595,7 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen>
       showPmsSnack(context, 'Status updated');
       await _onTab(4);
     } on ApiException catch (e) {
-      if (mounted) showPmsSnack(context, e.message, error: true);
+      _fail(e);
     }
   }
 
@@ -539,7 +619,7 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen>
       showPmsSnack(context, archive ? 'Project archived' : 'Project restored');
       await _loadCore();
     } on ApiException catch (e) {
-      if (mounted) showPmsSnack(context, e.message, error: true);
+      _fail(e);
     }
   }
 
@@ -562,12 +642,17 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen>
         context.go('/pms/projects');
       }
     } on ApiException catch (e) {
-      if (mounted) showPmsSnack(context, e.message, error: true);
+      _fail(e);
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    context.watch<OrgSession>();
+    context.watch<AuthProvider>();
+    final showStructure = _showStructure();
+    final showProgress = _showProgressModel();
+    final progressIndex = 7 + (showStructure ? 1 : 0);
     final project = _project ??
         ((_overview?['project'] is Map)
             ? Map<String, dynamic>.from(_overview!['project'] as Map)
@@ -634,28 +719,32 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen>
           ),
         ],
         bottom: AppBarTabBar(
-          controller: _tabs,
+          controller: _tabs!,
           isScrollable: true,
-          tabs: const [
-            Tab(text: 'Overview'),
-            Tab(text: 'Comments'),
-            Tab(text: 'Media'),
-            Tab(text: 'Hierarchy'),
-            Tab(text: 'Timeline'),
-            Tab(text: 'Board'),
-            Tab(text: 'Import'),
+          tabs: [
+            const Tab(text: 'Overview'),
+            const Tab(text: 'Comments'),
+            const Tab(text: 'Media'),
+            const Tab(text: 'Hierarchy'),
+            const Tab(text: 'Timeline'),
+            const Tab(text: 'Board'),
+            const Tab(text: 'Import'),
+            if (showStructure) const Tab(text: 'Structure'),
+            if (showProgress) const Tab(text: 'Progress Model'),
           ],
         ),
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
-          : _error != null
+          : _noAccess
+              ? NoAccessNotice(message: _error ?? 'You are not assigned to this project\'s site', onRetry: _loadCore)
+              : _error != null
               ? Padding(
                   padding: const EdgeInsets.all(16),
                   child: ErrorBanner(message: _error!, onRetry: _loadCore),
                 )
               : TabBarView(
-                  controller: _tabs,
+                  controller: _tabs!,
                   children: [
                     _OverviewTab(
                       project: project,
@@ -704,6 +793,13 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen>
                       onExport: _exportTasks,
                       onTemplate: _downloadImportTemplate,
                     ),
+                    if (showStructure) StructureTab(projectId: widget.projectId),
+                    if (showProgress)
+                      ProgressModelView(
+                        projectId: widget.projectId,
+                        tabController: _tabs,
+                        tabIndex: progressIndex,
+                      ),
                   ],
                 ),
     );

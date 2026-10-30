@@ -13,6 +13,7 @@ import '../../../core/widgets/motion.dart';
 import '../../app/app_shell.dart';
 import '../services/pms_services.dart';
 import '../utils/pms_constants.dart';
+import '../utils/site_access.dart';
 import '../utils/site_options.dart';
 import '../widgets/pickers.dart';
 import '../widgets/pms_widgets.dart';
@@ -28,6 +29,7 @@ class _ProjectsListScreenState extends State<ProjectsListScreen> {
   final _searchCtrl = TextEditingController();
   Timer? _debounce;
   bool _loading = true;
+  bool _noAccess = false;
   String? _error;
   List<Map<String, dynamic>> _items = [];
   String _search = '';
@@ -107,6 +109,7 @@ class _ProjectsListScreenState extends State<ProjectsListScreen> {
       setState(() {
         _loading = true;
         _error = null;
+        _noAccess = false;
       });
     }
     try {
@@ -130,6 +133,16 @@ class _ProjectsListScreenState extends State<ProjectsListScreen> {
       });
     } on ApiException catch (e) {
       if (!mounted || gen != _loadGen) return;
+      if (isSiteAccessDenied(e)) {
+        setState(() {
+          _items = [];
+          _hasMore = false;
+          _noAccess = true;
+          _error = e.message;
+          _loading = false;
+        });
+        return;
+      }
       setState(() {
         _error = e.message;
         _loading = false;
@@ -176,6 +189,7 @@ class _ProjectsListScreenState extends State<ProjectsListScreen> {
       await _load(reset: true);
     } on ApiException catch (e) {
       if (!mounted) return;
+      if (presentSiteAccessDenied(context, e)) return;
       showPmsSnack(context, e.message, error: true);
     }
   }
@@ -197,6 +211,7 @@ class _ProjectsListScreenState extends State<ProjectsListScreen> {
       await _load(reset: true);
     } on ApiException catch (e) {
       if (!mounted) return;
+      if (presentSiteAccessDenied(context, e)) return;
       showPmsSnack(context, e.message, error: true);
     }
   }
@@ -374,7 +389,7 @@ class _ProjectsListScreenState extends State<ProjectsListScreen> {
               ],
             ),
           ),
-          if (_error != null)
+          if (_error != null && !_noAccess)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: SoftAppear(
@@ -385,7 +400,12 @@ class _ProjectsListScreenState extends State<ProjectsListScreen> {
               ),
             ),
           Expanded(
-            child: StaggeredEntrance(
+            child: _noAccess
+                ? NoAccessNotice(
+                    message: _error ?? 'You are not assigned to this site',
+                    onRetry: () => _load(reset: true),
+                  )
+                : StaggeredEntrance(
               active: !(_loading && _items.isEmpty),
               replayToken: _motion,
               maxIndex: 6,

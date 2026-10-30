@@ -7,6 +7,7 @@ import '../../../core/utils/form_validation_helpers.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../pms/widgets/pms_widgets.dart';
 import '../services/settings_apis.dart';
+import '../utils/module_catalog.dart';
 import '../utils/permissions.dart';
 import 'settings_form_widgets.dart';
 
@@ -68,6 +69,20 @@ class _ModulesScreenState extends State<ModulesScreen> {
       });
     } on ApiException catch (e) {
       if (!mounted) return;
+      if (e.statusCode == 403 && _perms.isSuperAdmin) {
+        final fallback = await _modulesFromPermissions();
+        if (!mounted) return;
+        if (fallback != null) {
+          setState(() {
+            _items = fallback;
+            _pagination = {'totalPages': 1};
+            _page = 1;
+            _loading = false;
+            _error = null;
+          });
+          return;
+        }
+      }
       setState(() {
         _error = e.message;
         _loading = false;
@@ -78,6 +93,19 @@ class _ModulesScreenState extends State<ModulesScreen> {
         _error = e.toString();
         _loading = false;
       });
+    }
+  }
+
+  /// Live roles saved before `module:read` existed still reject `GET /modules`.
+  /// The permissions catalog lists the same modules for a signed-in admin.
+  Future<List<Map<String, dynamic>>?> _modulesFromPermissions() async {
+    try {
+      final defs = await context.read<SettingsApis>().listPermissionDefs();
+      if (defs.isEmpty) return null;
+      final items = modulesFromPermissionDefs(defs);
+      return items.isEmpty ? null : items;
+    } catch (_) {
+      return null;
     }
   }
 

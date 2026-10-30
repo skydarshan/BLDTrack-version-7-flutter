@@ -202,13 +202,25 @@ String? flutterNotificationPath(String? link) {
     return path;
   }
 
+  final nestedTask = RegExp(
+    r'^/(?:dashboard/)?projects/([a-fA-F0-9]{24})/tasks/([a-fA-F0-9]{24})',
+  ).firstMatch(path);
+  if (nestedTask != null) return '/pms/tasks/${nestedTask[2]}';
+
   final taskId = RegExp(r'^/tasks/([a-fA-F0-9]{24})$').firstMatch(path);
   if (taskId != null) return '/pms/tasks/${taskId[1]}';
-  if (path == '/tasks/approvals/pending' || path == '/tasks/completions/ready') {
-    return '/pms/approvals';
+  if (path == '/tasks/approvals/pending' ||
+      path == '/tasks/completions/ready' ||
+      path.startsWith('/dashboard/task-approvals') ||
+      path.startsWith('/dashboard/task-ready-completion')) {
+    return open.isEmpty ? '/pms/approvals' : '/pms/tasks/$open';
   }
-  final projectId = RegExp(r'^/projects/([a-fA-F0-9]{24})$').firstMatch(path);
+  if (path.startsWith('/dashboard/tasks')) {
+    return open.isEmpty ? '/pms/tasks' : '/pms/tasks/$open';
+  }
+  final projectId = RegExp(r'^/(?:dashboard/)?projects/([a-fA-F0-9]{24})$').firstMatch(path);
   if (projectId != null) return '/pms/projects/${projectId[1]}';
+  if (path == '/dashboard/projects' || path == '/projects') return '/pms/projects';
   final rr = RegExp(r'^/requisition-requests/([a-fA-F0-9]{24})$').firstMatch(path);
   if (rr != null) return '/procurement/rr/${rr[1]}';
   final rc = RegExp(r'^/rate-comparatives/([a-fA-F0-9]{24})$').firstMatch(path);
@@ -219,7 +231,125 @@ String? flutterNotificationPath(String? link) {
   if (dmr != null) return '/dmr/status/${dmr[1]}';
   final transfer = RegExp(r'^/inter-site-transfers/([a-fA-F0-9]{24})$').firstMatch(path);
   if (transfer != null) return '/inventory/transfers/${transfer[1]}';
-  return path;
+
+  if (path.startsWith('/dashboard/notifications')) return '/notifications';
+  if (path.startsWith('/dashboard/requisition-approvals')) {
+    return open.isEmpty ? '/procurement/approvals' : '/procurement/rr/$open';
+  }
+  if (path.startsWith('/dashboard/requisition-requests')) {
+    return open.isEmpty ? '/procurement/rr' : '/procurement/rr/$open';
+  }
+  if (path.startsWith('/dashboard/issued-material')) return '/inventory/imr';
+  if (path.startsWith('/dashboard/intersite')) {
+    return open.isEmpty ? '/inventory/transfers' : '/inventory/transfers/$open';
+  }
+  if (path.startsWith('/dashboard/scrap')) {
+    return open.isEmpty ? '/inventory/scrap' : '/inventory/scrap/$open';
+  }
+  if (path.startsWith('/dashboard/inventory')) return '/inventory';
+  return null;
+}
+
+/// Screen to open when the user taps a notification row or a push alert.
+String notificationRouteFor(Map<String, dynamic> row) {
+  final metadata = row['metadata'];
+  final meta = metadata is Map ? Map<String, dynamic>.from(metadata) : null;
+  final mapped = flutterNotificationPath(row['link']?.toString() ?? meta?['link']?.toString());
+  if (mapped != null) return mapped;
+
+  final entityId = idOf(row['entityId'] ?? meta?['entityId']);
+  final projectId = idOf(row['project'] ?? meta?['projectId'] ?? meta?['project']);
+  final section = meta?['section']?.toString();
+  switch (section) {
+    case 'project_completed':
+    case 'project_leadership':
+      final id = entityId ?? projectId;
+      return id == null ? '/pms/projects' : '/pms/projects/$id';
+    case 'ready':
+    case 'pending_approval':
+    case 'revise':
+    case 'assignment':
+    case 'completed':
+    case 'comment':
+      return entityId == null ? '/pms/tasks' : '/pms/tasks/$entityId';
+  }
+
+  switch (row['type']?.toString()) {
+    case 'completion_ready':
+    case 'completion_pending_approval':
+    case 'task_revised':
+    case 'task_comment':
+    case 'task_assigned':
+    case 'task_coordinator_assigned':
+    case 'task_completed':
+    case 'task_reminder':
+      return entityId == null ? '/pms/tasks' : '/pms/tasks/$entityId';
+    case 'project_completed':
+    case 'project_reminder':
+    case 'project_manager_assigned':
+    case 'project_lead_assigned':
+      final id = entityId ?? projectId;
+      return id == null ? '/pms/projects' : '/pms/projects/$id';
+    case 'rr_approval_pending':
+    case 'rr_approval_step2_pending':
+      return entityId == null ? '/procurement/approvals' : '/procurement/rr/$entityId';
+    case 'rr_approved':
+    case 'rr_revised':
+    case 'rr_rejected':
+      return entityId == null ? '/procurement/rr' : '/procurement/rr/$entityId';
+    case 'inventory_stock_received':
+      return '/inventory';
+    case 'inventory_material_issued':
+      return entityId == null ? '/inventory/imr' : '/inventory/imr/$entityId';
+    case 'inventory_transfer_created':
+    case 'inventory_transfer_received':
+      return entityId == null ? '/inventory/transfers' : '/inventory/transfers/$entityId';
+    case 'inventory_scrap_recorded':
+      return entityId == null ? '/inventory/scrap' : '/inventory/scrap/$entityId';
+    case 'dpr_pending_approval':
+      return entityId == null ? '/pms/dpr/approvals' : '/pms/dpr/approvals?open=$entityId';
+    case 'dpr_revised':
+    case 'dpr_approved':
+      return entityId == null ? '/pms/dpr' : '/pms/dpr/$entityId';
+    case 'dpr_missing':
+      return '/pms/dpr?tab=missing';
+  }
+
+  if (entityId == null) return '/notifications';
+  switch (row['entityType']?.toString() ?? meta?['entityType']?.toString()) {
+    case 'dpr':
+    case 'daily_progress_report':
+    case 'dailyProgressReport':
+      return '/pms/dpr/$entityId';
+    case 'task':
+      return '/pms/tasks/$entityId';
+    case 'project':
+      return '/pms/projects/$entityId';
+    case 'requisition':
+    case 'requisition_request':
+      return '/procurement/rr/$entityId';
+    case 'rate_comparative':
+      return '/procurement/rc/$entityId';
+    case 'purchase_order':
+    case 'requisition_order':
+      return '/procurement/po/$entityId';
+    case 'dmr':
+    case 'dmr_purchase_order':
+      return '/dmr/status/$entityId';
+    case 'issued_material':
+    case 'material_issue':
+      return '/inventory/imr/$entityId';
+    case 'transfer':
+    case 'inter_site_transfer':
+      return '/inventory/transfers/$entityId';
+    case 'scrap':
+      return '/inventory/scrap/$entityId';
+  }
+  return '/notifications';
+}
+
+bool notificationIsUnread(Map<String, dynamic> row) {
+  return row['read'] != true && row['isRead'] != true;
 }
 
 String planPriceLabel(Map<String, dynamic> plan) {

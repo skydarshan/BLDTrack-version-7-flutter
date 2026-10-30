@@ -8,8 +8,14 @@ import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/form_validation_helpers.dart';
 import '../../../core/utils/form_validators.dart';
 import '../../auth/providers/auth_provider.dart';
+import '../../org/org_session.dart';
 import '../../settings/services/settings_apis.dart';
+import '../../settings/utils/permissions.dart';
 import '../services/pms_services.dart';
+import '../utils/site_access.dart';
+import '../utils/structure_access.dart';
+import '../utils/structure_errors.dart';
+import '../utils/structure_nodes.dart';
 import '../utils/pms_constants.dart';
 import '../widgets/media_widgets.dart';
 import '../widgets/pickers.dart';
@@ -41,6 +47,8 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
 
   bool _loading = false;
   bool _saving = false;
+  bool _noAccess = false;
+  String? _accessMessage;
 
   String _priority = 'medium';
   String _status = 'not_started';
@@ -70,6 +78,10 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
   List<OptionItem> _parents = const [];
   List<OptionItem> _locations = const [];
   List<OptionItem> _contractors = const [];
+  bool _structurePicker = false;
+  List<OptionItem> _structureOptions = const [];
+  List<String> _structureIds = [];
+  List<String> _structureLabels = [];
   final _fieldErrors = FieldErrors();
 
   @override
@@ -90,10 +102,16 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
   }
 
   Future<void> _bootstrap() async {
-    setState(() => _loading = true);
+    setState(() {
+      _loading = true;
+      _noAccess = false;
+      _accessMessage = null;
+    });
     try {
       final api = context.read<PmsServices>();
       final settings = context.read<SettingsApis>();
+      final perms = Permissions(context.read<AuthProvider>().user);
+      _structurePicker = showStructurePicker(context.read<OrgSession>(), perms);
       final me = (!widget.isEdit && _projectId == null)
           ? context.read<AuthProvider>().user
           : null;
@@ -200,19 +218,89 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
             _loadedApprovalSteps = _approvalSteps;
           }
         }
+        _applyStructureLinks(task['structure_nodes']);
         if (_projectId != null) await _loadParents(_projectId!);
+      }
+
+      if (_structurePicker && _projectId != null) {
+        await _loadStructure(_projectId!);
       }
 
       if (!mounted) return;
       setState(() => _loading = false);
     } on ApiException catch (e) {
       if (!mounted) return;
+      if (presentSiteAccessDenied(context, e, onNoAccess: (message) {
+        setState(() {
+          _loading = false;
+          _noAccess = true;
+          _accessMessage = message;
+        });
+      })) {
+        return;
+      }
       setState(() => _loading = false);
       showPmsSnack(context, e.message, error: true);
     } catch (e) {
       if (!mounted) return;
       setState(() => _loading = false);
       showPmsSnack(context, e.toString(), error: true);
+    }
+  }
+
+  void _applyStructureLinks(dynamic raw) {
+    final ids = <String>[];
+    final labels = <String>[];
+    if (raw is List) {
+      for (final entry in raw) {
+        if (entry is Map) {
+          final id = idOf(Map<String, dynamic>.from(entry));
+          if (id == null || id.isEmpty) continue;
+          final name = entry['name']?.toString().trim() ?? '';
+          ids.add(id);
+          labels.add(name.isEmpty ? id : name);
+        } else if (entry != null && entry.toString().trim().isNotEmpty) {
+          final id = entry.toString().trim();
+          ids.add(id);
+          labels.add(id);
+        }
+      }
+    }
+    _structureIds = ids;
+    _structureLabels = labels;
+  }
+
+  void _syncStructureLabels() {
+    if (_structureIds.isEmpty) return;
+    final byId = {for (final option in _structureOptions) option.value: option.label};
+    _structureLabels = [
+      for (final id in _structureIds) byId[id] ?? id,
+    ];
+  }
+
+  Future<void> _loadStructure(String projectId) async {
+    if (!_structurePicker || projectId.isEmpty) return;
+    try {
+      final data = await context.read<PmsServices>().structure.tree(
+            projectId,
+            flat: true,
+          );
+      if (!mounted) return;
+      _structureOptions = structureNodeOptions(readStructureNodeList(data));
+      _syncStructureLabels();
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      final error = readStructureError(e);
+      _structureOptions = const [];
+      if (error.isNoAccess) {
+        _structurePicker = false;
+        return;
+      }
+      if (error.isNotFound) {
+        showPmsSnack(context, error.notFoundMessage, error: true);
+      }
+    } catch (_) {
+      _structureOptions = const [];
     }
   }
 
@@ -262,6 +350,49 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
   String? _iso(DateTime? d) =>
       d?.toIso8601String().substring(0, 10);
 
+  Future<void> _quickPick() async {
+    final projectId = _projectId;
+    if (projectId == null) return;
+    final picked = await showDialog<List<Map<String, dynamic>>>(
+      context: context,
+      builder: (ctx) => _ResolveDialog(
+        onSearch: (query) async {
+          try {
+            final data = await context.read<PmsServices>().structure.resolve(
+                  projectId,
+                  types: query['types'] as List<String>,
+                  fromLevel: query['from_level'] as int?,
+                  toLevel: query['to_level'] as int?,
+                  category: query['category'] as String?,
+                );
+            return readStructureNodeList(data);
+          } on ApiException catch (e) {
+            return readStructureError(e);
+          }
+        },
+      ),
+    );
+    if (picked == null || !mounted) return;
+    setState(() {
+      final labels = <String, String>{
+        for (var i = 0; i < _structureIds.length; i++)
+          _structureIds[i]: i < _structureLabels.length ? _structureLabels[i] : _structureIds[i],
+      };
+      final ids = [..._structureIds];
+      for (final node in picked) {
+        final id = idOf(node);
+        if (id == null || ids.contains(id)) continue;
+        ids.add(id);
+        labels[id] = node['label']?.toString().trim().isNotEmpty == true
+            ? node['label'].toString()
+            : (node['name']?.toString() ?? id);
+      }
+      _structureIds = ids;
+      _structureLabels = [for (final id in ids) labels[id] ?? id];
+      _fieldErrors.set('structure', null);
+    });
+  }
+
   Map<String, dynamic> _planningFields({required bool includeApproval}) {
     final sequenceText = _sequenceCtrl.text.trim();
     final durationText = _durationCtrl.text.trim();
@@ -269,6 +400,7 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
     final duration = int.tryParse(durationText);
     return {
       'location': _locationId,
+      if (_structurePicker) 'structure_nodes': _structureIds,
       'contractor': _contractorId,
       if (sequence != null) 'sequence': sequence,
       'duration_days': durationText.isEmpty ? null : duration,
@@ -386,6 +518,14 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
       if (mounted) context.pop(true);
     } on ApiException catch (e) {
       if (!mounted) return;
+      if (presentSiteAccessDenied(context, e, onNoAccess: (message) {
+        setState(() {
+          _noAccess = true;
+          _accessMessage = message;
+        });
+      })) {
+        return;
+      }
       _fieldErrors.merge(apiFieldErrors(e));
       setState(() {});
       showPmsSnack(context, formatApiErrorSummary(e), error: true);
@@ -400,7 +540,12 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
       appBar: AppBar(title: Text(widget.isEdit ? 'Edit task' : 'New task')),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
-          : Form(
+          : _noAccess
+              ? NoAccessNotice(
+                  message: _accessMessage ?? 'You are not assigned to this task\'s site',
+                  onRetry: _bootstrap,
+                )
+              : Form(
               key: _formKey,
               child: ListView(
                 padding: AppTheme.formPadding,
@@ -438,9 +583,13 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
                           _projectLabel = picked.label;
                           _parentId = null;
                           _parentLabel = '';
+                          _structureIds = [];
+                          _structureLabels = [];
+                          _structureOptions = const [];
                           _fieldErrors.set('project', null);
                         });
                         await _loadParents(picked.value);
+                        await _loadStructure(picked.value);
                         if (mounted) setState(() {});
                       },
                     )
@@ -603,27 +752,70 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
                       ],
                     ),
                   const SizedBox(height: 12),
-                  PickerField(
-                    label: 'Location',
-                    valueLabel: _locationLabel,
-                    onTap: () async {
-                      final picked = await showOptionPicker(
-                        context,
-                        title: 'Location',
-                        options: [
-                          const OptionItem(value: '', label: 'None'),
-                          ..._locations,
-                        ],
-                        selected: _locationId ?? '',
-                        emptyMessage: 'No locations found',
-                      );
-                      if (picked == null) return;
-                      setState(() {
-                        _locationId = picked.value.isEmpty ? null : picked.value;
-                        _locationLabel = picked.value.isEmpty ? '' : picked.label;
-                      });
-                    },
-                  ),
+                  if (_structurePicker)
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        PickerField(
+                          label: 'Structure',
+                          valueLabel: _structureLabels.isEmpty
+                              ? ''
+                              : _structureLabels.join(', '),
+                          enabled: _projectId != null,
+                          errorText: _fieldErrors['structure'],
+                          onTap: () async {
+                            if (_projectId == null) return;
+                            final picked = await showMultiOptionPicker(
+                              context,
+                              title: 'Structure',
+                              options: _structureOptions,
+                              selected: _structureIds,
+                              emptyMessage: 'No structure has been set up for this project yet.',
+                            );
+                            if (picked == null) return;
+                            final byId = {
+                              for (final option in _structureOptions) option.value: option.label,
+                            };
+                            setState(() {
+                              _structureIds = picked;
+                              _structureLabels = [
+                                for (final id in picked) byId[id] ?? id,
+                              ];
+                              _fieldErrors.set('structure', null);
+                            });
+                          },
+                        ),
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: TextButton(
+                            onPressed: _projectId == null ? null : _quickPick,
+                            child: const Text('Quick pick'),
+                          ),
+                        ),
+                      ],
+                    )
+                  else
+                    PickerField(
+                      label: 'Location',
+                      valueLabel: _locationLabel,
+                      onTap: () async {
+                        final picked = await showOptionPicker(
+                          context,
+                          title: 'Location',
+                          options: [
+                            const OptionItem(value: '', label: 'None'),
+                            ..._locations,
+                          ],
+                          selected: _locationId ?? '',
+                          emptyMessage: 'No locations found',
+                        );
+                        if (picked == null) return;
+                        setState(() {
+                          _locationId = picked.value.isEmpty ? null : picked.value;
+                          _locationLabel = picked.value.isEmpty ? '' : picked.label;
+                        });
+                      },
+                    ),
                   const SizedBox(height: 12),
                   PickerField(
                     label: 'Contractor',
@@ -714,6 +906,168 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
                 ],
               ),
             ),
+    );
+  }
+}
+
+class _ResolveDialog extends StatefulWidget {
+  const _ResolveDialog({required this.onSearch});
+
+  final Future<Object?> Function(Map<String, dynamic> query) onSearch;
+
+  @override
+  State<_ResolveDialog> createState() => _ResolveDialogState();
+}
+
+class _ResolveDialogState extends State<_ResolveDialog> {
+  final _types = TextEditingController(text: 'unit');
+  final _from = TextEditingController();
+  final _to = TextEditingController();
+  final _category = TextEditingController();
+  String? _error;
+  bool _busy = false;
+  Map<String, List<Map<String, dynamic>>> _groups = const {};
+  final _selected = <String>{};
+
+  @override
+  void dispose() {
+    _types.dispose();
+    _from.dispose();
+    _to.dispose();
+    _category.dispose();
+    super.dispose();
+  }
+
+  Future<void> _search() async {
+    final types = _types.text.split(',').map((part) => part.trim()).where((part) => part.isNotEmpty).toList();
+    if (types.isEmpty) {
+      setState(() => _error = 'Type is required');
+      return;
+    }
+    int? level(String text) {
+      final trimmed = text.trim();
+      if (trimmed.isEmpty) return null;
+      return int.tryParse(trimmed);
+    }
+
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    final result = await widget.onSearch({
+      'types': types,
+      'from_level': level(_from.text),
+      'to_level': level(_to.text),
+      'category': _category.text.trim(),
+    });
+    if (!mounted) return;
+    if (result is StructureApiError) {
+      if (result.isNoAccess || result.isNotFound) {
+        Navigator.pop(context);
+        return;
+      }
+      setState(() {
+        _busy = false;
+        _error = result.message;
+        _groups = const {};
+      });
+      return;
+    }
+    final nodes = result is List
+        ? result.whereType<Map>().map((node) => Map<String, dynamic>.from(node)).toList()
+        : <Map<String, dynamic>>[];
+    setState(() {
+      _busy = false;
+      _groups = groupStructureNodesByParent(nodes);
+      _selected
+        ..clear()
+        ..addAll(nodes.map((node) => idOf(node)).whereType<String>());
+    });
+  }
+
+  String _groupLabel(List<Map<String, dynamic>> nodes) {
+    final label = nodes.isEmpty ? '' : nodes.first['label']?.toString() ?? '';
+    final parts = label.split(' › ').where((part) => part.trim().isNotEmpty).toList();
+    if (parts.length <= 1) return 'Top level';
+    return parts.sublist(0, parts.length - 1).join(' › ');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final nodes = [for (final group in _groups.values) ...group];
+    return AlertDialog(
+      title: const Text('Quick pick'),
+      content: SizedBox(
+        width: 420,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (_error != null) Text(_error!),
+              TextField(
+                controller: _types,
+                decoration: const InputDecoration(
+                  labelText: 'Types *',
+                  hintText: 'floor,unit',
+                ),
+              ),
+              TextField(
+                controller: _from,
+                keyboardType: const TextInputType.numberWithOptions(signed: true),
+                decoration: const InputDecoration(labelText: 'From level'),
+              ),
+              TextField(
+                controller: _to,
+                keyboardType: const TextInputType.numberWithOptions(signed: true),
+                decoration: const InputDecoration(labelText: 'To level'),
+              ),
+              TextField(
+                controller: _category,
+                decoration: const InputDecoration(labelText: 'Category'),
+              ),
+              const SizedBox(height: 8),
+              if (_groups.isEmpty && !_busy) const Text('No matches yet.'),
+              for (final entry in _groups.entries) ...[
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(_groupLabel(entry.value)),
+                ),
+                for (final node in entry.value)
+                  CheckboxListTile(
+                    value: _selected.contains(idOf(node)),
+                    onChanged: (checked) {
+                      final id = idOf(node);
+                      if (id == null) return;
+                      setState(() {
+                        if (checked == true) {
+                          _selected.add(id);
+                        } else {
+                          _selected.remove(id);
+                        }
+                      });
+                    },
+                    title: Text(node['label']?.toString() ?? node['name']?.toString() ?? 'Node'),
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                  ),
+              ],
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+        TextButton(onPressed: _busy ? null : _search, child: Text(_busy ? 'Searching…' : 'Search')),
+        FilledButton(
+          onPressed: nodes.isEmpty
+              ? null
+              : () => Navigator.pop(
+                    context,
+                    nodes.where((node) => _selected.contains(idOf(node))).toList(),
+                  ),
+          child: const Text('Add'),
+        ),
+      ],
     );
   }
 }

@@ -198,7 +198,18 @@ String refId(dynamic raw) {
 }
 
 String formatModuleLabel(String module) {
-  if (module == 'dpr') return 'DPR';
+  switch (module) {
+    case 'dpr':
+      return 'DPR';
+    case 'projectstructure':
+      return 'Project Structure';
+    case 'projectmodel':
+      return 'Progress Model';
+    case 'taskprogress':
+      return 'Task Progress';
+    case 'projecttemplate':
+      return 'Project Templates';
+  }
   return module
       .split(RegExp(r'[-_]'))
       .where((p) => p.isNotEmpty)

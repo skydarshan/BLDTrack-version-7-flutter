@@ -64,6 +64,10 @@ class Permissions {
     for (final ws in accessibleWorkspaces(organization)) {
       out.addAll(workspacePermissionModules[ws] ?? const []);
     }
+    // Activities are task work types, so a Project Management admin can grant them.
+    if (accessibleWorkspaces(organization).contains('project_management')) {
+      out.add('activity');
+    }
     return out;
   }
 

@@ -6,6 +6,7 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/network/api_helpers.dart';
 import '../../../core/theme/app_theme.dart';
 import '../services/pms_services.dart';
+import '../utils/site_access.dart';
 import '../utils/pms_constants.dart';
 import '../widgets/media_widgets.dart';
 import '../widgets/pickers.dart';
@@ -30,6 +31,7 @@ class TaskDetailScreen extends StatefulWidget {
 
 class _TaskDetailScreenState extends State<TaskDetailScreen> {
   bool _loading = true;
+  bool _noAccess = false;
   String? _error;
   Map<String, dynamic>? _task;
   List<Map<String, dynamic>> _progress = [];
@@ -51,6 +53,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
     setState(() {
       _loading = true;
       _error = null;
+      _noAccess = false;
     });
     try {
       final api = context.read<PmsServices>();
@@ -76,6 +79,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() {
+        _noAccess = isSiteAccessDenied(e);
         _error = e.message;
         _loading = false;
       });
@@ -86,6 +90,19 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
         _loading = false;
       });
     }
+  }
+
+  void _fail(ApiException e) {
+    if (!mounted) return;
+    if (presentSiteAccessDenied(context, e, onNoAccess: (message) {
+      setState(() {
+        _noAccess = true;
+        _error = message;
+      });
+    })) {
+      return;
+    }
+    showPmsSnack(context, e.message, error: true);
   }
 
   bool _archivedRow(dynamic project) {
@@ -124,7 +141,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
       _commentCtrl.clear();
       await _load();
     } on ApiException catch (e) {
-      if (mounted) showPmsSnack(context, e.message, error: true);
+      _fail(e);
     }
   }
 
@@ -199,7 +216,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
       showPmsSnack(context, 'Progress logged');
       await _load();
     } on ApiException catch (e) {
-      if (mounted) showPmsSnack(context, e.message, error: true);
+      _fail(e);
     }
   }
 
@@ -259,7 +276,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
       showPmsSnack(context, 'Completion submitted');
       await _load();
     } on ApiException catch (e) {
-      if (mounted) showPmsSnack(context, e.message, error: true);
+      _fail(e);
     }
   }
 
@@ -411,7 +428,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
       showPmsSnack(context, 'Assignment updated');
       await _load();
     } on ApiException catch (e) {
-      if (mounted) showPmsSnack(context, e.message, error: true);
+      _fail(e);
     }
   }
 
@@ -447,7 +464,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
       showPmsSnack(context, 'Status updated');
       await _load();
     } on ApiException catch (e) {
-      if (mounted) showPmsSnack(context, e.message, error: true);
+      _fail(e);
     }
   }
 
@@ -470,7 +487,16 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
       setState(() => _pendingMedia = []);
       await _load();
     } on ApiException catch (e) {
-      if (mounted) setState(() => _mediaError = e.message);
+      if (!mounted) return;
+      if (presentSiteAccessDenied(context, e, onNoAccess: (message) {
+        setState(() {
+          _noAccess = true;
+          _error = message;
+        });
+      })) {
+        return;
+      }
+      setState(() => _mediaError = e.message);
     } catch (_) {
       if (mounted) {
         setState(() => _mediaError = 'Upload failed. Check the connection and tap Retry.');
@@ -491,7 +517,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
       showPmsSnack(context, 'Media removed');
       await _load();
     } on ApiException catch (e) {
-      if (mounted) showPmsSnack(context, e.message, error: true);
+      _fail(e);
     } finally {
       if (mounted) setState(() => _mediaBusy = false);
     }
@@ -533,7 +559,12 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
-          : _error != null
+          : _noAccess
+              ? NoAccessNotice(
+                  message: _error ?? 'You are not assigned to this task\'s site',
+                  onRetry: _load,
+                )
+              : _error != null
               ? Padding(
                   padding: const EdgeInsets.all(16),
                   child: ErrorBanner(message: _error!, onRetry: _load),
@@ -662,7 +693,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                                   showPmsSnack(context, 'Resubmitted for approval');
                                   await _load();
                                 } on ApiException catch (e) {
-                                  if (mounted) showPmsSnack(context, e.message, error: true);
+                                  _fail(e);
                                 }
                               },
                               child: const Text('Resubmit'),

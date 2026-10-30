@@ -22,10 +22,21 @@ class ApiConfig {
   /// Canonical live backend (same as React production).
   static const String liveApiBaseUrl = 'https://api.bldtrack.ai';
 
-  static const String apiBaseUrl = String.fromEnvironment(
+  /// Android emulator reaches this machine as 10.0.2.2. Release builds stay on live.
+  static const String localEmulatorApiBaseUrl = 'http://10.0.2.2:5000';
+
+  static const String _envApiBaseUrl = String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue: liveApiBaseUrl,
+    defaultValue: '',
   );
+
+  static String get apiBaseUrl {
+    if (_envApiBaseUrl.isNotEmpty) return _envApiBaseUrl;
+    if (kDebugMode && !kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+      return localEmulatorApiBaseUrl;
+    }
+    return liveApiBaseUrl;
+  }
 
   static String get apiV1Base => '$apiBaseUrl/api/v1';
 

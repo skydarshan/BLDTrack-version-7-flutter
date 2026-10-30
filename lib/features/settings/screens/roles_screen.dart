@@ -8,6 +8,7 @@ import '../../../core/utils/form_validation_helpers.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../org/org_session.dart';
+import '../../pms/utils/structure_access.dart';
 import '../../pms/widgets/pms_widgets.dart';
 import '../services/settings_apis.dart';
 import '../utils/permissions.dart';
@@ -38,6 +39,8 @@ const _defaultModules = [
   'projecttemplate',
   'taskprogress',
   'dpr',
+  'projectstructure',
+  'projectmodel',
 ];
 
 const _crudActions = ['create', 'read', 'update', 'delete'];
@@ -53,10 +56,45 @@ const _dprPermissionHints = {
 
 String? _dprPermissionHint(String action) => _dprPermissionHints[action];
 
+String _actionLabel(String action) {
+  switch (action) {
+    case 'read':
+      return 'Read';
+    case 'create':
+      return 'Create';
+    case 'update':
+      return 'Update';
+    case 'delete':
+      return 'Delete';
+    case 'submit':
+      return 'Submit';
+    case 'approve':
+      return 'Approve';
+    default:
+      return action;
+  }
+}
+
+/// Notes from the Project Structure guide for the role matrix.
+String? _moduleHint(String module) {
+  switch (module) {
+    case 'projectstructure':
+      return 'Read, create, update and delete buildings, floors and units.';
+    case 'projectmodel':
+      return 'Read opens the 3D viewer. Create, update and delete are not used.';
+    case 'activity':
+      return 'Granted with Project Management. Activities are also task work types.';
+    default:
+      return null;
+  }
+}
+
 List<String> _actionsForModule(String module) {
   if (module == 'dpr') {
     return const ['create', 'read', 'update', 'delete', 'submit', 'approve'];
   }
+  // Progress Model only checks read. Create, update and delete are unused.
+  if (module == 'projectmodel') return const ['read'];
   return _crudActions;
 }
 
@@ -245,11 +283,19 @@ class _RolesScreenState extends State<RolesScreen> {
       if (mod == null || mod.isEmpty) continue;
       byModule[mod] = Map<String, dynamic>.from(mp);
     }
-    final visibleModules = (_perms.isSuperAdmin
+    final candidates = (_perms.isSuperAdmin
             ? <String>{..._modules, ...byModule.keys}
             : editable.intersection({..._modules, ...byModule.keys}.toSet()))
+        .where(
+          (module) => offerRolePermissionModule(
+            module,
+            org,
+            alreadyOnRole: byModule.containsKey(module),
+          ),
+        )
         .toList()
       ..sort();
+    final visibleModules = candidates;
     return visibleModules.map((m) {
       final existingMp = byModule[m];
       final perms = _blankPerms(m);
@@ -392,11 +438,24 @@ class _RolesScreenState extends State<RolesScreen> {
                                   Row(
                                     children: [
                                       Expanded(
-                                        child: Text(
-                                          formatModuleLabel(module),
-                                          style: const TextStyle(
-                                            fontWeight: FontWeight.w600,
-                                          ),
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              formatModuleLabel(module),
+                                              style: const TextStyle(
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                            ),
+                                            if (_moduleHint(module) != null)
+                                              Text(
+                                                _moduleHint(module)!,
+                                                style: const TextStyle(
+                                                  fontSize: 12,
+                                                  color: AppTheme.muted,
+                                                ),
+                                              ),
+                                          ],
                                         ),
                                       ),
                                       Checkbox(
@@ -442,7 +501,7 @@ class _RolesScreenState extends State<RolesScreen> {
                                     children: [
                                       for (final action in actions)
                                         FilterChip(
-                                          label: Text(action),
+                                          label: Text(_actionLabel(action)),
                                           tooltip: module == 'dpr' ? _dprPermissionHint(action) : null,
                                           selected: perms[action] == true,
                                           onSelected: (v) {
