@@ -99,9 +99,19 @@ class StructureApi {
   }
 
   /// POST /projects/:id/structure/from-tasks
-  Future<Map<String, dynamic>> fromTasks(String projectId) async {
+  ///
+  /// [preview] true (the default) returns the plan only. [preview] false
+  /// creates missing buildings and floors and links matching tasks.
+  /// Tasks that already have a link are left unchanged.
+  /// Nothing detected is a 400. A commit is 201 and adds `created_nodes`
+  /// and `linked_tasks`.
+  Future<Map<String, dynamic>> fromTasks(
+    String projectId, {
+    bool preview = true,
+  }) async {
     final res = await _client.post<Map<String, dynamic>>(
       '/projects/$projectId/structure/from-tasks',
+      data: {'preview': preview},
     );
     return unwrapDataMap(res.data);
   }

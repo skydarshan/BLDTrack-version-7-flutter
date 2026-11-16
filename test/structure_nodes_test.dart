@@ -95,7 +95,7 @@ void main() {
       fromLevelText: '',
       toLevelText: '',
     );
-    expect(floor.payload!.containsKey('name'), isFalse);
+    expect(floor.payload!['name'], 'Basement 1');
     expect(floor.payload!['level_number'], -1);
     expect(floor.payload!['parent'], 'b');
 
@@ -112,6 +112,45 @@ void main() {
     );
     expect(unit.isValid, isFalse);
     expect(unit.errors['parent'], 'A unit must be placed under a floor');
+
+    final commonArea = structureCreateBody(
+      type: 'common_area',
+      parentId: 'b',
+      parentType: 'building',
+      name: 'Lobby',
+      code: '',
+      category: '',
+      levelText: '',
+      fromLevelText: '',
+      toLevelText: '',
+    );
+    expect(commonArea.errors['parent'], 'A common area must be placed under a floor');
+
+    final coreParent = structureCreateBody(
+      type: 'core',
+      parentId: 'f',
+      parentType: 'floor',
+      name: 'Lift 1',
+      code: '',
+      category: '',
+      levelText: '',
+      fromLevelText: '0',
+      toLevelText: '5',
+    );
+    expect(coreParent.errors['parent'], 'A core must be placed under a building');
+
+    final highLevel = structureCreateBody(
+      type: 'floor',
+      parentId: 'b',
+      parentType: 'building',
+      name: '',
+      code: '',
+      category: '',
+      levelText: '301',
+      fromLevelText: '',
+      toLevelText: '',
+    );
+    expect(highLevel.errors['level_number'], 'Level must be between -20 and 300');
 
     final core = structureCreateBody(
       type: 'core',
@@ -187,6 +226,27 @@ void main() {
     expect(
       moved.errors['parent'],
       'A node cannot be moved under itself or one of its children',
+    );
+  });
+
+  test('floors are shown by level before other siblings', () {
+    final roots = structureTreeRoots({
+      'tree': [
+        {
+          '_id': 'b',
+          'type': 'building',
+          'name': 'Tower A',
+          'children': [
+            {'_id': 'f5', 'type': 'floor', 'level_number': 5, 'children': []},
+            {'_id': 'lift', 'type': 'core', 'name': 'Lift 1', 'children': []},
+            {'_id': 'b1', 'type': 'floor', 'level_number': -1, 'children': []},
+          ],
+        },
+      ],
+    });
+    expect(
+      structureChildNodes(roots.single).map((node) => node['_id']),
+      ['b1', 'f5', 'lift'],
     );
   });
 

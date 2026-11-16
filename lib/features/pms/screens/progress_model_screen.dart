@@ -40,6 +40,7 @@ class _ProgressModelViewState extends State<ProgressModelView>
   Map<String, dynamic> _coverage = const {};
   Map<String, Map<String, dynamic>> _nodes = const {};
   Map<String, dynamic>? _model;
+  final Set<String> _openIds = {};
   int _request = 0;
   bool _wasSelected = false;
 
@@ -75,8 +76,15 @@ class _ProgressModelViewState extends State<ProgressModelView>
     if (oldWidget.projectId != widget.projectId) {
       _model = null;
       _loadedOnce = false;
+      _openIds.clear();
       _load(includeModel: true);
     }
+  }
+
+  void _toggleOpen(String id) {
+    setState(() {
+      if (!_openIds.remove(id)) _openIds.add(id);
+    });
   }
 
   @override
@@ -265,6 +273,8 @@ class _ProgressModelViewState extends State<ProgressModelView>
               building: building,
               nodes: _nodes,
               legend: _legend,
+              openIds: _openIds,
+              onToggle: _toggleOpen,
               onOpen: _openNode,
             ),
             const SizedBox(height: 8),
@@ -363,34 +373,97 @@ class _StructureTree extends StatelessWidget {
     required this.building,
     required this.nodes,
     required this.legend,
+    required this.openIds,
+    required this.onToggle,
     required this.onOpen,
   });
 
   final StackedBuilding building;
   final Map<String, Map<String, dynamic>> nodes;
   final List<Map<String, dynamic>> legend;
+  final Set<String> openIds;
+  final ValueChanged<String> onToggle;
   final ValueChanged<String> onOpen;
 
   @override
   Widget build(BuildContext context) {
+    final buildingId = building.node.nodeId;
+    final buildingOpen = openIds.contains(buildingId);
+    final buildingHasChildren = building.floors.isNotEmpty || building.cores.isNotEmpty;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _StructureRow(
           cell: building.node,
           depth: 0,
-          node: nodes[building.node.nodeId],
+          node: nodes[buildingId],
           legend: legend,
-          onTap: () => onOpen(building.node.nodeId),
+          expanded: buildingOpen,
+          hasChildren: buildingHasChildren,
+          onTap: buildingHasChildren
+              ? () => onToggle(buildingId)
+              : () => onOpen(buildingId),
+          onOpenDetails: buildingHasChildren ? () => onOpen(buildingId) : null,
         ),
-        for (final floor in building.floors) ...[
-          _StructureRow(
-            cell: floor.node,
-            depth: 1,
-            node: nodes[floor.node.nodeId],
-            legend: legend,
-            onTap: () => onOpen(floor.node.nodeId),
-          ),
+        if (buildingOpen) ...[
+          for (final floor in building.floors)
+            _FloorBranch(
+              floor: floor,
+              nodes: nodes,
+              legend: legend,
+              open: openIds.contains(floor.node.nodeId),
+              onToggle: onToggle,
+              onOpen: onOpen,
+            ),
+          for (final core in building.cores)
+            _StructureRow(
+              cell: core,
+              depth: 1,
+              node: nodes[core.nodeId],
+              legend: legend,
+              onTap: () => onOpen(core.nodeId),
+            ),
+        ],
+      ],
+    );
+  }
+}
+
+class _FloorBranch extends StatelessWidget {
+  const _FloorBranch({
+    required this.floor,
+    required this.nodes,
+    required this.legend,
+    required this.open,
+    required this.onToggle,
+    required this.onOpen,
+  });
+
+  final StackedFloor floor;
+  final Map<String, Map<String, dynamic>> nodes;
+  final List<Map<String, dynamic>> legend;
+  final bool open;
+  final ValueChanged<String> onToggle;
+  final ValueChanged<String> onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final floorId = floor.node.nodeId;
+    final hasChildren = floor.children.isNotEmpty;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _StructureRow(
+          cell: floor.node,
+          depth: 1,
+          node: nodes[floorId],
+          legend: legend,
+          expanded: open,
+          hasChildren: hasChildren,
+          onTap: hasChildren ? () => onToggle(floorId) : () => onOpen(floorId),
+          onOpenDetails: hasChildren ? () => onOpen(floorId) : null,
+        ),
+        if (open)
           for (final child in floor.children)
             _StructureRow(
               cell: child,
@@ -399,15 +472,6 @@ class _StructureTree extends StatelessWidget {
               legend: legend,
               onTap: () => onOpen(child.nodeId),
             ),
-        ],
-        for (final core in building.cores)
-          _StructureRow(
-            cell: core,
-            depth: 1,
-            node: nodes[core.nodeId],
-            legend: legend,
-            onTap: () => onOpen(core.nodeId),
-          ),
       ],
     );
   }
@@ -420,6 +484,9 @@ class _StructureRow extends StatelessWidget {
     required this.node,
     required this.legend,
     required this.onTap,
+    this.expanded = false,
+    this.hasChildren = false,
+    this.onOpenDetails,
   });
 
   final StackedCell cell;
@@ -427,6 +494,9 @@ class _StructureRow extends StatelessWidget {
   final Map<String, dynamic>? node;
   final List<Map<String, dynamic>> legend;
   final VoidCallback onTap;
+  final bool expanded;
+  final bool hasChildren;
+  final VoidCallback? onOpenDetails;
 
   @override
   Widget build(BuildContext context) {
@@ -438,11 +508,23 @@ class _StructureRow extends StatelessWidget {
     final progress = node == null ? '' : formatProgressPercent(node?['progress']);
     return InkWell(
       onTap: onTap,
+      onLongPress: onOpenDetails,
       child: Padding(
         padding: EdgeInsets.only(left: depth * 16.0, top: 6, bottom: 6),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            if (hasChildren)
+              Padding(
+                padding: const EdgeInsets.only(right: 4, top: 8),
+                child: Icon(
+                  expanded ? Icons.expand_more : Icons.chevron_right,
+                  size: 20,
+                  color: AppTheme.muted,
+                ),
+              )
+            else
+              const SizedBox(width: 24),
             Container(
               width: 10,
               height: 36,

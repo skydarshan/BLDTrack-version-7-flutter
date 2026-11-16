@@ -208,6 +208,348 @@ String? towerClashFormField(String field) {
   }
 }
 
+/// One node the tower commit will create, parented by [parentRef].
+class TowerNodeDraft {
+  const TowerNodeDraft({
+    required this.ref,
+    required this.body,
+    this.parentRef,
+  });
+
+  final String ref;
+  final String? parentRef;
+  final Map<String, dynamic> body;
+}
+
+/// Local tower plan. Used when the generate endpoint is not on this contract yet.
+class TowerPlan {
+  const TowerPlan({required this.preview, required this.drafts});
+
+  final Map<String, dynamic> preview;
+  final List<TowerNodeDraft> drafts;
+}
+
+/// Builds the preview tree, counts, warnings and clashes from [payload].
+///
+/// [existing] is the project's current nodes. A clash does not write anything.
+TowerPlan planTowerGenerate(
+  Map<String, dynamic> payload, {
+  List<Map<String, dynamic>> existing = const [],
+}) {
+  final building = payload['building'] is Map
+      ? Map<String, dynamic>.from(payload['building'] as Map)
+      : const <String, dynamic>{};
+  final name = building['name']?.toString().trim() ?? '';
+  final towerCode = building['code']?.toString().trim() ?? '';
+  final basements = asNum(payload['basements'])?.toInt() ?? 0;
+  final floorCount = asNum(payload['floors'])?.toInt() ?? 0;
+  final ground = payload['ground_floor'] != false;
+  final terrace = payload['terrace'] == true;
+  final units = asNum(payload['units_per_floor'])?.toInt() ?? 0;
+  final lifts = asNum(payload['lifts'])?.toInt() ?? 0;
+  final staircases = asNum(payload['staircases'])?.toInt() ?? 0;
+  final pattern = _patternOf(payload, units);
+  final category = payload['unit_category']?.toString().trim() ?? '';
+  final areas = _nameList(payload['common_areas']);
+  final height = asNum(payload['floor_height']);
+  final footprint = payload['footprint'] is Map
+      ? Map<String, dynamic>.from(payload['footprint'] as Map)
+      : const <String, dynamic>{};
+  final width = asNum(footprint['width']);
+  final depth = asNum(footprint['depth']);
+
+  final levels = <_TowerLevel>[];
+  for (var index = basements; index >= 1; index--) {
+    levels.add(_TowerLevel(-index, 'Basement $index', 'Basement', false));
+  }
+  if (ground) levels.add(const _TowerLevel(0, 'Ground Floor', '', false));
+  for (var index = 1; index <= floorCount; index++) {
+    levels.add(_TowerLevel(index, 'Floor $index', '', false));
+  }
+  if (terrace) {
+    final top = levels.isEmpty ? 0 : levels.last.level;
+    levels.add(_TowerLevel(top + 1, 'Terrace', '', true));
+  }
+
+  var unitFrom = 1;
+  var unitTo = floorCount;
+  final range = payload['unit_floors'];
+  if (range is Map) {
+    unitFrom = asNum(range['from'])?.toInt() ?? unitFrom;
+    unitTo = asNum(range['to'])?.toInt() ?? unitTo;
+  }
+
+  final usedCodes = <String>{
+    for (final node in existing)
+      if ((node['code']?.toString().trim() ?? '').isNotEmpty)
+        node['code'].toString().trim().toLowerCase(),
+  };
+  final clashes = <Map<String, String>>[];
+  final nameTaken = existing.any(
+    (node) =>
+        node['type'] == 'building' &&
+        (node['name']?.toString().trim().toLowerCase() ?? '') == name.toLowerCase(),
+  );
+  if (name.isNotEmpty && nameTaken) {
+    clashes.add({
+      'field': 'building.name',
+      'value': name,
+      'message': 'A building with this name already exists',
+    });
+  }
+  void claimCode(String code) {
+    final key = code.trim().toLowerCase();
+    if (key.isEmpty) return;
+    if (usedCodes.contains(key)) {
+      clashes.add({
+        'field': 'code',
+        'value': code,
+        'message': 'Code is already used in this project',
+      });
+    }
+    usedCodes.add(key);
+  }
+
+  claimCode(towerCode);
+
+  final warnings = <String>[];
+  final hasUnit = RegExp(r'\{unit(?::\d+)?\}').hasMatch(pattern);
+  final hasLetter = pattern.contains('{unit_letter}');
+  if (units > 1 && !hasUnit && !hasLetter) {
+    warnings.add(
+      'The code pattern has no {unit} token, so units on the same floor get the same code',
+    );
+  }
+
+  final drafts = <TowerNodeDraft>[];
+  final floorNodes = <Map<String, dynamic>>[];
+  var unitCount = 0;
+  var areaCount = 0;
+  final buildingGeometry = _sizeGeometry(width: width, depth: depth);
+  drafts.add(
+    TowerNodeDraft(
+      ref: 'b',
+      body: {
+        'type': 'building',
+        'name': name,
+        if (towerCode.isNotEmpty) 'code': towerCode,
+        if (buildingGeometry != null) 'geometry': buildingGeometry,
+      },
+    ),
+  );
+
+  for (final level in levels) {
+    final ref = 'f${level.level}';
+    final floorGeometry = _sizeGeometry(height: height, width: width, depth: depth);
+    drafts.add(
+      TowerNodeDraft(
+        ref: ref,
+        parentRef: 'b',
+        body: {
+          'type': 'floor',
+          'name': level.name,
+          'level_number': level.level,
+          if (level.category.isNotEmpty) 'category': level.category,
+          if (floorGeometry != null) 'geometry': floorGeometry,
+        },
+      ),
+    );
+    final children = <Map<String, dynamic>>[];
+    if (!level.terrace) {
+      for (var index = 0; index < areas.length; index++) {
+        final areaRef = '${ref}a${index + 1}';
+        drafts.add(
+          TowerNodeDraft(
+            ref: areaRef,
+            parentRef: ref,
+            body: {
+              'type': 'common_area',
+              'name': areas[index],
+            },
+          ),
+        );
+        children.add({
+          'ref': areaRef,
+          'type': 'common_area',
+          'name': areas[index],
+          'children': <Map<String, dynamic>>[],
+        });
+        areaCount += 1;
+      }
+      final takesUnits = units > 0 && level.level >= unitFrom && level.level <= unitTo;
+      if (takesUnits) {
+        for (var unit = 1; unit <= units; unit++) {
+          final code = applyTowerCodePattern(
+            pattern: pattern,
+            level: level.level,
+            unit: unit,
+            towerCode: towerCode,
+          );
+          claimCode(code);
+          final unitRef = '${ref}u$unit';
+          drafts.add(
+            TowerNodeDraft(
+              ref: unitRef,
+              parentRef: ref,
+              body: {
+                'type': 'unit',
+                'name': code,
+                if (code.isNotEmpty) 'code': code,
+                if (category.isNotEmpty) 'category': category,
+              },
+            ),
+          );
+          children.add({
+            'ref': unitRef,
+            'type': 'unit',
+            'name': code,
+            if (code.isNotEmpty) 'code': code,
+            if (category.isNotEmpty) 'category': category,
+            'children': <Map<String, dynamic>>[],
+          });
+          unitCount += 1;
+        }
+      }
+    }
+    floorNodes.add({
+      'ref': ref,
+      'type': 'floor',
+      'name': level.name,
+      'level_number': level.level,
+      if (level.category.isNotEmpty) 'category': level.category,
+      'children': children,
+    });
+  }
+
+  final lowest = levels.isEmpty ? null : levels.first.level;
+  final highest = levels.isEmpty ? null : levels.last.level;
+  final coreNodes = <Map<String, dynamic>>[];
+  if (lowest != null && highest != null) {
+    void addCores(int count, String label) {
+      for (var index = 1; index <= count; index++) {
+        final coreName = '$label $index';
+        final ref = '${label == 'Lift' ? 'l' : 's'}$index';
+        drafts.add(
+          TowerNodeDraft(
+            ref: ref,
+            parentRef: 'b',
+            body: {
+              'type': 'core',
+              'name': coreName,
+              'from_level': lowest,
+              'to_level': highest,
+            },
+          ),
+        );
+        coreNodes.add({
+          'ref': ref,
+          'type': 'core',
+          'name': coreName,
+          'from_level': lowest,
+          'to_level': highest,
+          'children': <Map<String, dynamic>>[],
+        });
+      }
+    }
+
+    addCores(lifts, 'Lift');
+    addCores(staircases, 'Staircase');
+  }
+
+  final counts = {
+    'buildings': 1,
+    'floors': levels.length,
+    'units': unitCount,
+    'common_areas': areaCount,
+    'cores': lifts + staircases,
+    'total': 1 + levels.length + unitCount + areaCount + lifts + staircases,
+  };
+  return TowerPlan(
+    preview: {
+      'preview': true,
+      'counts': counts,
+      'warnings': warnings,
+      'clashes': clashes,
+      'tree': [
+        {
+          'ref': 'b',
+          'type': 'building',
+          'name': name,
+          if (towerCode.isNotEmpty) 'code': towerCode,
+          'children': [...floorNodes, ...coreNodes],
+        },
+      ],
+    },
+    drafts: drafts,
+  );
+}
+
+/// Writes [plan] with the existing create-node endpoint, parent before child.
+Future<Map<String, dynamic>> commitPlannedTower({
+  required Map<String, dynamic> payload,
+  required List<Map<String, dynamic>> existing,
+  required Future<Map<String, dynamic>> Function(Map<String, dynamic> body) createNode,
+}) async {
+  final plan = planTowerGenerate(payload, existing: existing);
+  final ids = <String, String>{};
+  for (final draft in plan.drafts) {
+    final body = Map<String, dynamic>.from(draft.body);
+    final parentRef = draft.parentRef;
+    if (parentRef != null) body['parent'] = ids[parentRef];
+    final created = await createNode(body);
+    final id = idOf(created);
+    if (id == null || id.isEmpty) {
+      throw StateError('The structure node was not created');
+    }
+    ids[draft.ref] = id;
+  }
+  return {
+    'preview': false,
+    'counts': plan.preview['counts'],
+    'warnings': plan.preview['warnings'],
+    'created_nodes': plan.drafts.length,
+  };
+}
+
+bool towerSpecPreview(Map<String, dynamic> data) =>
+    data['counts'] is Map && data['tree'] is List;
+
+bool towerSpecCommit(Map<String, dynamic> data) =>
+    data['preview'] == false && data['counts'] is Map;
+
+String _patternOf(Map<String, dynamic> payload, int units) {
+  if (units <= 0) return towerCodePatternDefault;
+  final text = payload['code_pattern']?.toString().trim() ?? '';
+  if (text.isEmpty) return towerCodePatternDefault;
+  return text;
+}
+
+List<String> _nameList(Object? raw) {
+  if (raw is! List) return const [];
+  return [
+    for (final item in raw)
+      if (item.toString().trim().isNotEmpty) item.toString().trim(),
+  ];
+}
+
+Map<String, num>? _sizeGeometry({num? height, num? width, num? depth}) {
+  final geometry = <String, num>{};
+  if (height != null) geometry['height'] = height;
+  if (width != null) geometry['width'] = width;
+  if (depth != null) geometry['depth'] = depth;
+  if (geometry.isEmpty) return null;
+  return geometry;
+}
+
+class _TowerLevel {
+  const _TowerLevel(this.level, this.name, this.category, this.terrace);
+
+  final int level;
+  final String name;
+  final String category;
+  final bool terrace;
+}
+
 Map<String, String> towerClashFieldErrors(List<TowerClash> clashes) {
   final out = <String, String>{};
   for (final clash in clashes) {

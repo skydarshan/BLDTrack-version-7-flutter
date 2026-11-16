@@ -75,6 +75,70 @@ void main() {
     expect(write.payload!.containsKey('footprint'), isFalse);
   });
 
+  test('default pattern makes floor 5 unit 3 into 503A and lists clashes', () {
+    final plan = planTowerGenerate(
+      {
+        'building': {'name': 'Tower A', 'code': 'A'},
+        'basements': 1,
+        'ground_floor': true,
+        'floors': 5,
+        'terrace': false,
+        'units_per_floor': 3,
+        'unit_floors': {'from': 5, 'to': 5},
+        'unit_category': '2BHK',
+        'code_pattern': '{floor}{unit:02}{tower}',
+        'common_areas': ['Lobby'],
+        'lifts': 1,
+        'staircases': 1,
+      },
+      existing: [
+        {'type': 'building', 'name': 'Tower B', 'code': 'B'},
+      ],
+    );
+    final tree = (plan.preview['tree'] as List).single as Map;
+    final floors = (tree['children'] as List).where((node) => node['type'] == 'floor');
+    final floor5 = floors.singleWhere((node) => node['level_number'] == 5) as Map;
+    final units = (floor5['children'] as List).where((node) => node['type'] == 'unit').toList();
+    expect(units[2]['code'], '503A');
+    expect(units[2]['category'], '2BHK');
+    expect((plan.preview['tree'] as List).single['children'].first['name'], 'Basement 1');
+    expect(plan.preview['clashes'], isEmpty);
+    expect(
+      plan.drafts.any((draft) => draft.body['type'] == 'core' && draft.body['name'] == 'Lift 1'),
+      isTrue,
+    );
+
+    final clash = planTowerGenerate(
+      {
+        'building': {'name': 'Tower B', 'code': 'B'},
+        'floors': 1,
+        'units_per_floor': 0,
+      },
+      existing: [
+        {'type': 'building', 'name': 'Tower B', 'code': 'B'},
+      ],
+    );
+    expect(readTowerClashes(clash.preview['clashes']).map((item) => item.field), contains('building.name'));
+  });
+
+  test('a pattern without a unit token warns and blocks duplicate codes', () {
+    final plan = planTowerGenerate({
+      'building': {'name': 'Tower A', 'code': 'A'},
+      'floors': 1,
+      'ground_floor': false,
+      'units_per_floor': 2,
+      'unit_floors': {'from': 1, 'to': 1},
+      'code_pattern': '{floor}{tower}',
+    });
+    expect(
+      readTowerWarnings(plan.preview['warnings']),
+      contains(
+        'The code pattern has no {unit} token, so units on the same floor get the same code',
+      ),
+    );
+    expect(readTowerClashes(plan.preview['clashes']), isNotEmpty);
+  });
+
   test('ranges and a reversed unit span are rejected', () {
     final write = towerGenerateBody(
       name: '',

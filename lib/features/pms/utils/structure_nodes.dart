@@ -1,23 +1,81 @@
 import '../../../core/network/api_helpers.dart';
 import 'structure_access.dart';
 
+/// Floors only. Unique inside one building.
+const structureFloorLevelMin = -20;
+const structureFloorLevelMax = 300;
+
 /// Building and external area are the only types with no parent.
 bool structureTypeAllowsParent(String type) =>
     type != 'building' && type != 'external_area';
 
-/// A sensible type when adding a child under [parentType].
-String structureChildType(String? parentType) {
+/// Parent type required for [type]. Null means the node sits at the top.
+String? structureRequiredParentType(String type) {
+  switch (type) {
+    case 'floor':
+    case 'core':
+      return 'building';
+    case 'unit':
+    case 'common_area':
+      return 'floor';
+    default:
+      return null;
+  }
+}
+
+String structureParentMessage(String type) {
+  switch (type) {
+    case 'floor':
+      return 'A floor must be placed under a building';
+    case 'core':
+      return 'A core must be placed under a building';
+    case 'common_area':
+      return 'A common area must be placed under a floor';
+    default:
+      return 'A unit must be placed under a floor';
+  }
+}
+
+/// Building holds floors and cores. A floor holds units and common areas.
+bool structureAcceptsChildren(String? type) => type == 'building' || type == 'floor';
+
+/// Types that can be added directly under [parentType].
+List<String> structureChildTypes(String? parentType) {
   switch (parentType) {
     case 'building':
-      return 'floor';
+      return const ['floor', 'core'];
     case 'floor':
-      return 'unit';
+      return const ['unit', 'common_area'];
     case null:
     case '':
-      return 'building';
+      return const ['building', 'external_area'];
     default:
-      return 'common_area';
+      return const [];
   }
+}
+
+/// A sensible type when adding a child under [parentType].
+String structureChildType(String? parentType) {
+  final types = structureChildTypes(parentType);
+  if (types.isNotEmpty) return types.first;
+  return 'building';
+}
+
+/// Name the server would otherwise leave blank: Ground Floor, Floor 5, Basement 2.
+String structureFloorName(int level) {
+  if (level < 0) return 'Basement ${level.abs()}';
+  if (level == 0) return 'Ground Floor';
+  return 'Floor $level';
+}
+
+/// Floors are shown by level. Other siblings keep their current order.
+List<Map<String, dynamic>> sortStructureChildren(List<Map<String, dynamic>> nodes) {
+  final floors = nodes.where((node) => node['type'] == 'floor').toList()
+    ..sort(
+      (a, b) => (asNum(a['level_number']) ?? 0).compareTo(asNum(b['level_number']) ?? 0),
+    );
+  final rest = nodes.where((node) => node['type'] != 'floor');
+  return [...floors, ...rest];
 }
 
 int structureTaskCount(Map<String, dynamic> node) {
@@ -225,8 +283,9 @@ StructureWrite structureCreateBody({
   final parent = _cleanId(parentId);
   if (structureTypeAllowsParent(type)) {
     if (parent == null) errors['parent'] = 'Parent is required';
-    if (type == 'unit' && parent != null && parentType != 'floor') {
-      errors['parent'] = 'A unit must be placed under a floor';
+    final requiredParent = structureRequiredParentType(type);
+    if (parent != null && requiredParent != null && parentType != requiredParent) {
+      errors['parent'] = structureParentMessage(type);
     }
   }
   final trimmedName = name.trim();
@@ -249,6 +308,7 @@ StructureWrite structureCreateBody({
     required: type == 'core',
   );
   if (type == 'floor' && level.error != null) errors['level_number'] = level.error!;
+  _rejectFloorRange(type, level.value, errors);
   if (type == 'core' && fromLevel.error != null) errors['from_level'] = fromLevel.error!;
   if (type == 'core' && toLevel.error != null) errors['to_level'] = toLevel.error!;
   if (type == 'core' &&
@@ -262,7 +322,10 @@ StructureWrite structureCreateBody({
 
   final payload = <String, dynamic>{'type': type};
   if (structureTypeAllowsParent(type)) payload['parent'] = parent;
-  if (trimmedName.isNotEmpty) payload['name'] = trimmedName;
+  final floorName = type == 'floor' && trimmedName.isEmpty && level.value != null
+      ? structureFloorName(level.value!)
+      : trimmedName;
+  if (floorName.isNotEmpty) payload['name'] = floorName;
   final trimmedCode = code.trim();
   if (trimmedCode.isNotEmpty) payload['code'] = trimmedCode;
   final trimmedCategory = category.trim();
@@ -299,8 +362,12 @@ StructureWrite structurePatchBody({
     if (parent != null && blockedParentIds.contains(parent)) {
       errors['parent'] = 'A node cannot be moved under itself or one of its children';
     }
-    if (type == 'unit' && parent != null && parentType != 'floor' && !errors.containsKey('parent')) {
-      errors['parent'] = 'A unit must be placed under a floor';
+    final requiredParent = structureRequiredParentType(type);
+    if (parent != null &&
+        requiredParent != null &&
+        parentType != requiredParent &&
+        !errors.containsKey('parent')) {
+      errors['parent'] = structureParentMessage(type);
     }
   }
   final trimmedName = name.trim();
@@ -311,6 +378,7 @@ StructureWrite structurePatchBody({
   final fromLevel = _parseWhole(fromLevelText, label: 'From level', required: type == 'core');
   final toLevel = _parseWhole(toLevelText, label: 'To level', required: type == 'core');
   if (type == 'floor' && level.error != null) errors['level_number'] = level.error!;
+  _rejectFloorRange(type, level.value, errors);
   if (type == 'core' && fromLevel.error != null) errors['from_level'] = fromLevel.error!;
   if (type == 'core' && toLevel.error != null) errors['to_level'] = toLevel.error!;
   if (type == 'core' &&
@@ -324,7 +392,10 @@ StructureWrite structurePatchBody({
 
   final payload = <String, dynamic>{};
   final existingName = existing['name']?.toString().trim() ?? '';
-  if (trimmedName.isNotEmpty && trimmedName != existingName) payload['name'] = trimmedName;
+  final nextName = type == 'floor' && trimmedName.isEmpty && level.value != null
+      ? structureFloorName(level.value!)
+      : trimmedName;
+  if (nextName.isNotEmpty && nextName != existingName) payload['name'] = nextName;
   final trimmedCode = code.trim();
   final existingCode = existing['code']?.toString().trim() ?? '';
   if (trimmedCode != existingCode) payload['code'] = trimmedCode;
@@ -372,6 +443,14 @@ class _ParsedWhole {
   final String? error;
 }
 
+void _rejectFloorRange(String type, int? level, Map<String, String> errors) {
+  if (type != 'floor' || level == null || errors.containsKey('level_number')) return;
+  if (level < structureFloorLevelMin || level > structureFloorLevelMax) {
+    errors['level_number'] =
+        'Level must be between $structureFloorLevelMin and $structureFloorLevelMax';
+  }
+}
+
 _ParsedWhole _parseWhole(String text, {required String label, required bool required}) {
   final trimmed = text.trim();
   if (trimmed.isEmpty) {
@@ -392,7 +471,9 @@ List<Map<String, dynamic>> _copyNodes(List<dynamic> raw) {
 
 Map<String, dynamic> _copyNode(Map<String, dynamic> raw) {
   final node = Map<String, dynamic>.from(raw);
-  node['children'] = _copyNodes(raw['children'] is List ? raw['children'] as List : const []);
+  node['children'] = sortStructureChildren(
+    _copyNodes(raw['children'] is List ? raw['children'] as List : const []),
+  );
   return node;
 }
 

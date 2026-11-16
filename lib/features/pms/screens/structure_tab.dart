@@ -10,8 +10,11 @@ import '../../settings/utils/permissions.dart';
 import '../services/pms_services.dart';
 import '../utils/structure_access.dart';
 import '../utils/structure_errors.dart';
+import '../utils/structure_from_tasks.dart';
 import '../utils/structure_nodes.dart';
+import '../utils/tower_generate.dart';
 import '../widgets/pms_widgets.dart';
+import 'structure_from_tasks_screen.dart';
 import 'tower_generate_screen.dart';
 
 class StructureTab extends StatefulWidget {
@@ -30,6 +33,7 @@ class _StructureTabState extends State<StructureTab> {
   String? _error;
   List<Map<String, dynamic>> _roots = [];
   Map<String, dynamic> _summary = const {};
+  final Set<String> _openIds = {};
 
   @override
   void initState() {
@@ -127,9 +131,18 @@ class _StructureTabState extends State<StructureTab> {
       }
       return;
     }
+    if (creating && parentId != null && parentId.isNotEmpty) {
+      _openIds.add(parentId);
+    }
     await _load(silent: true);
     if (!mounted) return;
     showPmsSnack(context, creating ? 'Node added.' : 'Node updated.');
+  }
+
+  void _toggleOpen(String id) {
+    setState(() {
+      if (!_openIds.remove(id)) _openIds.add(id);
+    });
   }
 
   Future<void> _deleteNode(Map<String, dynamic> node) async {
@@ -213,31 +226,137 @@ class _StructureTabState extends State<StructureTab> {
     }
   }
 
-  Future<void> _fromTasks() async {
+  Future<Object?> _previewFromTasks() async {
+    final api = context.read<PmsServices>();
     try {
-      final data = await context.read<PmsServices>().structure.fromTasks(widget.projectId);
-      if (!mounted) return;
-      final created = asNum(data['created_nodes'])?.toInt() ?? 0;
-      final linked = asNum(data['linked_tasks'])?.toInt() ?? 0;
-      showPmsSnack(context, 'Added $created node(s). Linked $linked task(s).');
-      await _load(silent: true);
+      final tasks = await api.projects.getTaskTree(widget.projectId);
+      final tree = await api.structure.tree(widget.projectId, flat: true);
+      final preview = planStructureFromTasks(
+        tasks: tasks,
+        nodes: readStructureNodeList(tree),
+      );
+      if (preview == null) {
+        return readStructureError(
+          ApiException(
+            statusCode: 400,
+            message: 'Nothing was detected in the task titles',
+          ),
+        );
+      }
+      return preview;
     } on ApiException catch (e) {
-      if (!mounted) return;
+      return readStructureError(e);
+    }
+  }
+
+  Future<Object?> _commitFromTasks() async {
+    final api = context.read<PmsServices>();
+    try {
+      final tasks = await api.projects.getTaskTree(widget.projectId);
+      final tree = await api.structure.tree(widget.projectId, flat: true);
+      final preview = planStructureFromTasks(
+        tasks: tasks,
+        nodes: readStructureNodeList(tree),
+      );
+      if (preview == null) {
+        return readStructureError(
+          ApiException(
+            statusCode: 400,
+            message: 'Nothing was detected in the task titles',
+          ),
+        );
+      }
+      return await commitPlannedStructureFromTasks(
+        preview: preview,
+        createNode: (body) => api.structure.createNode(widget.projectId, body),
+        linkTask: (taskId, nodeId) async {
+          await api.tasks.update(taskId, {
+            'structure_nodes': [nodeId],
+          });
+        },
+      );
+    } on ApiException catch (e) {
+      return readStructureError(e);
+    }
+  }
+
+  Future<Object?> _previewTower(Map<String, dynamic> payload) async {
+    final api = context.read<PmsServices>();
+    try {
+      final remote = await api.structure.generateTower(widget.projectId, payload);
+      if (towerSpecPreview(remote)) return remote;
+    } on ApiException catch (e) {
       final error = readStructureError(e);
-      if (error.isNoAccess) {
+      if (error.isNoAccess || error.isNotFound || error.statusCode == 409) return error;
+    } catch (_) {}
+    try {
+      final tree = await api.structure.tree(widget.projectId, flat: true);
+      return planTowerGenerate(
+        payload,
+        existing: readStructureNodeList(tree),
+      ).preview;
+    } on ApiException catch (e) {
+      return readStructureError(e);
+    }
+  }
+
+  Future<Object?> _commitTower(Map<String, dynamic> payload) async {
+    final api = context.read<PmsServices>();
+    try {
+      final remote = await api.structure.generateTower(
+        widget.projectId,
+        payload,
+        preview: false,
+      );
+      if (towerSpecCommit(remote)) return remote;
+    } on ApiException catch (e) {
+      final error = readStructureError(e);
+      if (error.isNoAccess || error.isNotFound || error.statusCode == 409) return error;
+    } catch (_) {}
+    try {
+      final tree = await api.structure.tree(widget.projectId, flat: true);
+      return await commitPlannedTower(
+        payload: payload,
+        existing: readStructureNodeList(tree),
+        createNode: (body) => api.structure.createNode(widget.projectId, body),
+      );
+    } on ApiException catch (e) {
+      return readStructureError(e);
+    }
+  }
+
+  Future<void> _fromTasks() async {
+    final result = await showDialog<Object?>(
+      context: context,
+      useSafeArea: false,
+      builder: (ctx) => Dialog.fullscreen(
+        child: StructureFromTasksScreen(
+          onPreview: _previewFromTasks,
+          onCommit: _commitFromTasks,
+        ),
+      ),
+    );
+    if (!mounted || result == null) return;
+    if (result is StructureApiError) {
+      if (result.isNoAccess) {
         setState(() {
           _noAccess = true;
-          _error = error.message;
+          _error = result.message;
         });
-        return;
+      } else if (result.isNotFound) {
+        showPmsSnack(context, result.notFoundMessage, error: true);
+        await _load(silent: true);
       }
-      showPmsSnack(
-        context,
-        error.isNotFound ? error.notFoundMessage : error.message,
-        error: true,
-      );
-      if (error.isNotFound) await _load(silent: true);
+      return;
     }
+    final data = result is Map ? Map<String, dynamic>.from(result) : const <String, dynamic>{};
+    final created = asNum(data['created_nodes'])?.toInt() ?? 0;
+    final linked = asNum(data['linked_tasks'])?.toInt() ?? 0;
+    showPmsSnack(
+      context,
+      fromTasksResultMessage(createdNodes: created, linkedTasks: linked),
+    );
+    await _load(silent: true);
   }
 
   Future<void> _generate() async {
@@ -246,27 +365,8 @@ class _StructureTabState extends State<StructureTab> {
       useSafeArea: false,
       builder: (ctx) => Dialog.fullscreen(
         child: TowerGenerateScreen(
-          onPreview: (payload) async {
-            try {
-              return await context.read<PmsServices>().structure.generateTower(
-                    widget.projectId,
-                    payload,
-                  );
-            } on ApiException catch (e) {
-              return readStructureError(e);
-            }
-          },
-          onCreate: (payload) async {
-            try {
-              return await context.read<PmsServices>().structure.generateTower(
-                    widget.projectId,
-                    payload,
-                    preview: false,
-                  );
-            } on ApiException catch (e) {
-              return readStructureError(e);
-            }
-          },
+          onPreview: _previewTower,
+          onCreate: _commitTower,
         ),
       ),
     );
@@ -360,72 +460,98 @@ class _StructureTabState extends State<StructureTab> {
       );
     }
 
-    return Column(
-      children: [
-        if (canCreate)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+    final actions = canCreate
+        ? <Widget>[
+            if (_summary.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Text(
+                  _summary.entries
+                      .where((entry) => (asNum(entry.value) ?? 0) > 0)
+                      .map((entry) => '${entry.value} ${entry.key}')
+                      .join(' · '),
+                ),
+              ),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
               children: [
-                if (_summary.isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: Text(
-                      _summary.entries
-                          .where((entry) => (asNum(entry.value) ?? 0) > 0)
-                          .map((entry) => '${entry.value} ${entry.key}')
-                          .join(' · '),
-                    ),
-                  ),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  alignment: WrapAlignment.end,
-                  children: [
-                    OutlinedButton(
-                      onPressed: _fromTasks,
-                      child: const Text('From tasks'),
-                    ),
-                    OutlinedButton(
-                      onPressed: _generate,
-                      child: const Text('Generate tower'),
-                    ),
-                    FilledButton.icon(
-                      onPressed: () => _editNode(),
-                      icon: const Icon(Icons.add),
-                      label: const Text('Add'),
-                    ),
-                  ],
+                OutlinedButton(
+                  style: OutlinedButton.styleFrom(minimumSize: const Size(0, 40)),
+                  onPressed: _fromTasks,
+                  child: const Text('From tasks'),
+                ),
+                OutlinedButton(
+                  style: OutlinedButton.styleFrom(minimumSize: const Size(0, 40)),
+                  onPressed: _generate,
+                  child: const Text('Generate tower'),
+                ),
+                FilledButton.icon(
+                  style: FilledButton.styleFrom(minimumSize: const Size(0, 40)),
+                  onPressed: () => _editNode(),
+                  icon: const Icon(Icons.add),
+                  label: const Text('Add'),
                 ),
               ],
             ),
-          ),
-        Expanded(
-          child: _roots.isEmpty
-              ? const Center(
-                  child: Padding(
-                    padding: EdgeInsets.all(24),
-                    child: Text(
-                      'No structure has been set up for this project yet.',
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
-                )
-              : _SiblingList(
-                  nodes: _roots,
-                  parentId: null,
-                  depth: 0,
-                  primary: true,
-                  canUpdate: canUpdate,
-                  canDelete: canDelete,
-                  canCreate: canCreate,
-                  canDrag: canUpdate && !_reordering,
-                  onEdit: (item) => _editNode(existing: item),
-                  onDelete: _deleteNode,
-                  onAddChild: (item) => _editNode(parentId: idOf(item)),
-                  onReorder: _reorder,
+            const SizedBox(height: 12),
+          ]
+        : const <Widget>[];
+
+    if (_roots.isEmpty) {
+      return Column(
+        children: [
+          if (actions.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: actions,
+              ),
+            ),
+          const Expanded(
+            child: Center(
+              child: Padding(
+                padding: EdgeInsets.all(24),
+                child: Text(
+                  'No structure has been set up for this project yet.',
+                  textAlign: TextAlign.center,
                 ),
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+      children: [
+        ...actions,
+        DecoratedBox(
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surface,
+            border: Border.all(color: AppTheme.border),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: _SiblingList(
+              nodes: _roots,
+              parentId: null,
+              depth: 0,
+              openIds: _openIds,
+              canUpdate: canUpdate,
+              canDelete: canDelete,
+              canCreate: canCreate,
+              canDrag: canUpdate && !_reordering,
+              onToggle: _toggleOpen,
+              onEdit: (item) => _editNode(existing: item),
+              onDelete: _deleteNode,
+              onAddChild: (item) => _editNode(parentId: idOf(item)),
+              onReorder: _reorder,
+            ),
+          ),
         ),
       ],
     );
@@ -437,7 +563,8 @@ class _SiblingList extends StatelessWidget {
     required this.nodes,
     required this.parentId,
     required this.depth,
-    required this.primary,
+    required this.openIds,
+    required this.onToggle,
     required this.canUpdate,
     required this.canDelete,
     required this.canCreate,
@@ -451,7 +578,8 @@ class _SiblingList extends StatelessWidget {
   final List<Map<String, dynamic>> nodes;
   final String? parentId;
   final int depth;
-  final bool primary;
+  final Set<String> openIds;
+  final ValueChanged<String> onToggle;
   final bool canUpdate;
   final bool canDelete;
   final bool canCreate;
@@ -464,10 +592,12 @@ class _SiblingList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final drag = canDrag && nodes.length > 1;
+    final shown = sortStructureChildren(nodes);
+    final drag = canDrag && shown.where((node) => node['type'] != 'floor').length > 1;
     Widget block(Map<String, dynamic> node, int index) {
       final id = idOf(node);
       final children = structureChildNodes(node);
+      final open = id != null && openIds.contains(id);
       return Column(
         key: ValueKey(id ?? '$depth-$index'),
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -476,20 +606,23 @@ class _SiblingList extends StatelessWidget {
             node: node,
             depth: depth,
             index: index,
-            canDrag: drag,
+            expanded: open,
+            canDrag: drag && node['type'] != 'floor',
             canUpdate: canUpdate,
             canDelete: canDelete,
             canCreate: canCreate,
+            onToggle: children.isNotEmpty && id != null ? () => onToggle(id) : null,
             onEdit: () => onEdit(node),
             onDelete: () => onDelete(node),
             onAddChild: () => onAddChild(node),
           ),
-          if (children.isNotEmpty)
+          if (children.isNotEmpty && open)
             _SiblingList(
               nodes: children,
               parentId: id,
               depth: depth + 1,
-              primary: false,
+              openIds: openIds,
+              onToggle: onToggle,
               canUpdate: canUpdate,
               canDelete: canDelete,
               canCreate: canCreate,
@@ -503,22 +636,83 @@ class _SiblingList extends StatelessWidget {
       );
     }
 
-    final children = [for (var i = 0; i < nodes.length; i++) block(nodes[i], i)];
-    if (!drag) {
-      final column = Column(children: children);
-      if (!primary) return column;
-      return ListView(
-        padding: const EdgeInsets.fromLTRB(8, 8, 8, 24),
-        children: [column],
-      );
-    }
-    return ReorderableListView(
-      shrinkWrap: !primary,
-      physics: primary ? const AlwaysScrollableScrollPhysics() : const NeverScrollableScrollPhysics(),
-      padding: primary ? const EdgeInsets.fromLTRB(8, 8, 8, 24) : EdgeInsets.zero,
-      buildDefaultDragHandles: false,
-      onReorderItem: (oldIndex, newIndex) => onReorder(parentId, nodes, oldIndex, newIndex),
+    final children = [for (var i = 0; i < shown.length; i++) block(shown[i], i)];
+    final column = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: children,
+    );
+    if (!drag) return column;
+    return _InlineReorder(
+      onReorder: (oldIndex, newIndex) => onReorder(parentId, shown, oldIndex, newIndex),
+      children: children,
+    );
+  }
+}
+
+class _ReorderDrag {
+  const _ReorderDrag(this.token, this.index);
+
+  final Object token;
+  final int index;
+}
+
+class _ReorderScope extends InheritedWidget {
+  const _ReorderScope({required this.token, required super.child});
+
+  final Object token;
+
+  static Object? maybeOf(BuildContext context) {
+    return context.dependOnInheritedWidgetOfExactType<_ReorderScope>()?.token;
+  }
+
+  @override
+  bool updateShouldNotify(_ReorderScope oldWidget) => token != oldWidget.token;
+}
+
+/// Sibling reorder that stays inside the parent list. A nested
+/// [ReorderableListView] paints its rows outside that list.
+class _InlineReorder extends StatefulWidget {
+  const _InlineReorder({required this.onReorder, required this.children});
+
+  final void Function(int oldIndex, int newIndex) onReorder;
+  final List<Widget> children;
+
+  @override
+  State<_InlineReorder> createState() => _InlineReorderState();
+}
+
+class _InlineReorderState extends State<_InlineReorder> {
+  final Object _token = Object();
+
+  @override
+  Widget build(BuildContext context) {
+    return _ReorderScope(
+      token: _token,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (var i = 0; i < widget.children.length; i++)
+            DragTarget<_ReorderDrag>(
+              onWillAcceptWithDetails: (details) =>
+                  details.data.token == _token && details.data.index != i,
+              onAcceptWithDetails: (details) {
+                final from = details.data.index;
+                if (details.data.token != _token || from == i) return;
+                widget.onReorder(from, i);
+              },
+              builder: (context, candidate, _) {
+                return DecoratedBox(
+                  decoration: BoxDecoration(
+                    border: candidate.isEmpty
+                        ? null
+                        : const Border(top: BorderSide(color: AppTheme.brand, width: 2)),
+                  ),
+                  child: widget.children[i],
+                );
+              },
+            ),
+        ],
+      ),
     );
   }
 }
@@ -528,6 +722,8 @@ class _NodeTile extends StatelessWidget {
     required this.node,
     required this.depth,
     required this.index,
+    required this.expanded,
+    required this.onToggle,
     required this.canDrag,
     required this.canUpdate,
     required this.canDelete,
@@ -540,6 +736,8 @@ class _NodeTile extends StatelessWidget {
   final Map<String, dynamic> node;
   final int depth;
   final int index;
+  final bool expanded;
+  final VoidCallback? onToggle;
   final bool canDrag;
   final bool canUpdate;
   final bool canDelete;
@@ -555,8 +753,11 @@ class _NodeTile extends StatelessWidget {
     final name = node['name']?.toString().trim() ?? '';
     return ListTile(
       contentPadding: EdgeInsets.only(left: 8.0 + (depth * 16), right: 4),
+      onTap: onToggle,
       title: Row(
         children: [
+          if (onToggle != null)
+            Icon(expanded ? Icons.expand_more : Icons.chevron_right, size: 20),
           Expanded(child: Text(name.isEmpty ? 'Node' : name)),
           if (tasks > 0)
             Container(
@@ -577,34 +778,52 @@ class _NodeTile extends StatelessWidget {
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (canDrag)
-            ReorderableDragStartListener(
-              index: index,
-              child: const Tooltip(
-                message: 'Reorder',
-                child: Icon(Icons.drag_handle),
-              ),
-            ),
-          if (canCreate)
+          if (canDrag) _dragHandle(context, name),
+          if (canCreate && structureAcceptsChildren(type))
             IconButton(
               tooltip: 'Add',
+              visualDensity: VisualDensity.compact,
               onPressed: onAddChild,
               icon: const Icon(Icons.add),
             ),
           if (canUpdate)
             IconButton(
               tooltip: 'Edit',
+              visualDensity: VisualDensity.compact,
               onPressed: onEdit,
               icon: const Icon(Icons.edit_outlined),
             ),
           if (canDelete)
             IconButton(
               tooltip: 'Delete',
+              visualDensity: VisualDensity.compact,
               onPressed: onDelete,
               icon: const Icon(Icons.delete_outline, color: AppTheme.danger),
             ),
         ],
       ),
+    );
+  }
+
+  Widget _dragHandle(BuildContext context, String name) {
+    final handle = const Tooltip(
+      message: 'Reorder',
+      child: Icon(Icons.drag_handle),
+    );
+    final token = _ReorderScope.maybeOf(context);
+    if (token == null) return handle;
+    return LongPressDraggable<_ReorderDrag>(
+      data: _ReorderDrag(token, index),
+      dragAnchorStrategy: pointerDragAnchorStrategy,
+      feedback: Material(
+        elevation: 3,
+        borderRadius: BorderRadius.circular(8),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          child: Text(name.isEmpty ? 'Node' : name),
+        ),
+      ),
+      child: handle,
     );
   }
 
@@ -727,10 +946,11 @@ class _NodeDialogState extends State<_NodeDialog> {
     final blocked = selfId == null
         ? const <String>{}
         : {selfId, ...structureDescendantIds(selfId, widget.nodes)};
+    final requiredParent = structureRequiredParentType(_type);
     return [
       for (final node in widget.nodes)
         if (idOf(node) != null && !blocked.contains(idOf(node)))
-          if (_type != 'unit' || node['type']?.toString() == 'floor') node,
+          if (requiredParent != null && node['type']?.toString() == requiredParent) node,
     ];
   }
 
@@ -805,11 +1025,23 @@ class _NodeDialogState extends State<_NodeDialog> {
   Widget build(BuildContext context) {
     final parents = _parentChoices();
     final parentValue = parents.any((node) => idOf(node) == _parentId) ? _parentId : null;
+    final typeChoices = _editing
+        ? <String>[_type]
+        : () {
+            if (widget.parentId != null && widget.parentId!.isNotEmpty) {
+              final types = structureChildTypes(_typeOf(widget.parentId));
+              if (types.isNotEmpty) return types;
+            }
+            return structureNodeTypeLabels.keys.toList();
+          }();
     final typeItems = [
-      for (final entry in structureNodeTypeLabels.entries)
-        DropdownMenuItem(value: entry.key, child: Text(entry.value)),
-      if (!structureNodeTypeLabels.containsKey(_type))
-        DropdownMenuItem(value: _type, child: Text(_type)),
+      for (final type in typeChoices)
+        DropdownMenuItem(
+          value: type,
+          child: Text(structureNodeTypeLabels[type] ?? type),
+        ),
+      if (!typeChoices.contains(_type))
+        DropdownMenuItem(value: _type, child: Text(structureNodeTypeLabels[_type] ?? _type)),
     ];
     return AlertDialog(
       title: Text(_editing ? 'Edit node' : 'Add node'),
@@ -831,6 +1063,9 @@ class _NodeDialogState extends State<_NodeDialog> {
               autofocus: true,
               decoration: InputDecoration(
                 labelText: _type == 'floor' ? 'Name' : 'Name *',
+                helperText: _type == 'floor'
+                    ? 'Leave blank for Ground Floor, Floor 5, or Basement 2.'
+                    : null,
                 errorText: _fields['name'],
               ),
               onChanged: (_) {
@@ -905,6 +1140,7 @@ class _NodeDialogState extends State<_NodeDialog> {
                 keyboardType: const TextInputType.numberWithOptions(signed: true),
                 decoration: InputDecoration(
                   labelText: 'Level *',
+                  helperText: 'From −20 to 300. Unique in this building.',
                   errorText: _fields['level_number'],
                 ),
                 onChanged: (_) {
